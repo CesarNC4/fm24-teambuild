@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { ATTR_BY_KEY } from "@/lib/fm/attributes";
 import { POSITION_LABEL } from "@/lib/fm/roles";
 import { TIER_LABEL, type PersonalityTierLevel } from "@/lib/fm/personalities";
-import { NEED_LABEL, VERDICT_LABEL, evaluateAll, fmtMoney, squadNeeds, type CandidateEval, type NeedLevel, type Verdict } from "@/lib/fm/scouting";
+import { NEED_LABEL, SCOUTING_TIPS, VERDICT_LABEL, evaluateAll, fmtMoney, squadNeeds, suggestAssignments, type CandidateEval, type NeedLevel, type Verdict } from "@/lib/fm/scouting";
 import { estimateGameYear } from "@/lib/fm/youth";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -41,6 +41,8 @@ export default function ScoutingPage() {
   const gameYear = useMemo(() => estimateGameYear(firstTeam), [firstTeam]);
   const needsRes = useMemo(() => (tactic && firstTeam.length ? squadNeeds(tactic, firstTeam, gameYear) : null), [tactic, firstTeam, gameYear]);
   const evals = useMemo(() => (needsRes ? evaluateAll(scouted, needsRes.needs, firstTeam, budget, gameYear) : []), [needsRes, scouted, firstTeam, budget, gameYear]);
+  const assignments = useMemo(() => (needsRes ? suggestAssignments(needsRes.needs, firstTeam, budget) : []), [needsRes, firstTeam, budget]);
+  const [showAssignments, setShowAssignments] = useState(true);
 
   const list = evals.filter((e) => (!hideDiscarded || e.verdict !== "descartar") && (slotFilter === "todos" || e.fit?.need.slotId === slotFilter) && (maxAge === "" || (e.player.age ?? 0) <= maxAge));
 
@@ -88,6 +90,43 @@ export default function ScoutingPage() {
             ))}
           </div>
           <p className="text-xs text-muted">Urgente: sin suplente a menos de 12 puntos. Mejorable: titular 6 puntos por debajo de la media del XI. Sucesión: titular de 30+ sin relevo ≤26 o con contrato que vence. Clic en un hueco para filtrar candidatos.</p>
+        </section>
+      )}
+
+      {assignments.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold text-sm">Encargos para los ojeadores</h2>
+            <button className="text-xs underline text-muted" onClick={() => setShowAssignments(!showAssignments)}>{showAssignments ? "ocultar" : "mostrar"}</button>
+          </div>
+          {showAssignments && (
+            <div className="grid lg:grid-cols-[1fr_300px] gap-3">
+              <div className="grid md:grid-cols-2 gap-2">
+                {assignments.map((a) => (
+                  <div key={a.need.slotId} className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
+                    <div className="flex justify-between gap-2">
+                      <span className="font-medium">{POSITION_LABEL[a.need.slot]} · {a.need.role.es}</span>
+                      <span className={a.priority === "maxima" ? "text-attr-low" : "text-muted"}>prioridad {a.priority === "maxima" ? "máxima" : "normal"} · {NEED_LABEL[a.need.level]}</span>
+                    </div>
+                    <p className="text-muted">{a.note}</p>
+                    <table className="w-full">
+                      <tbody>
+                        {a.filters.map((f) => (
+                          <tr key={f.label}><td className="text-muted pr-2 align-top whitespace-nowrap">{f.label}</td><td>{f.value}</td></tr>
+                        ))}
+                        <tr><td className="text-muted pr-2 align-top whitespace-nowrap">Ojeador</td><td>{a.scoutProfile}</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+              <aside className="bg-surface border border-border rounded-md p-3 text-xs space-y-1.5 self-start">
+                <h3 className="font-medium text-sm">Cómo montar el ojeo</h3>
+                {SCOUTING_TIPS.map((t, i) => <p key={i}>· {t}</p>)}
+                <p className="text-muted">En el juego: Ojeo → Encargos → Nuevo foco de reclutamiento, y copia estos filtros. El «Nivel en la app» es para comprobar aquí lo que traiga el informe.</p>
+              </aside>
+            </div>
+          )}
         </section>
       )}
 

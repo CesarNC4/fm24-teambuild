@@ -211,3 +211,63 @@ export function evaluateAll(scouted: Player[], needs: SquadNeed[], firstTeam: Pl
     .map((p) => evaluateCandidate(p, needs, firstTeam, budget, gameYear))
     .sort((a, b) => b.score - a.score);
 }
+
+// ---------------------------------------------------------------------------
+// Encargos de ojeo (guía de scouting de Passion4FM)
+// ---------------------------------------------------------------------------
+
+export interface ScoutAssignment {
+  need: SquadNeed;
+  /** "Máxima" (corto plazo, 2+ ojeadores) o "Normal" (≈1 mes, 1 ojeador). */
+  priority: "maxima" | "normal";
+  /** Qué ojeador: el de mejor JPA (nivel actual) o JPP (potencial). */
+  scoutProfile: string;
+  /** Campos del foco de reclutamiento del juego. */
+  filters: { label: string; value: string }[];
+  note: string;
+}
+
+export function suggestAssignments(needs: SquadNeed[], firstTeam: Player[], budget: Budget): ScoutAssignment[] {
+  const wages = firstTeam.map((x) => x.wage).filter((w): w is number => w != null).sort((a, b) => a - b);
+  const maxWage = wages.length ? wages[wages.length - 1] : null;
+  return needs
+    .filter((n) => n.level !== "cubierto")
+    .map((n) => {
+      const starterWage = n.starter?.player.wage ?? null;
+      const wageCap = budget.wage ?? (starterWage != null ? Math.round(starterWage * 1.2) : maxWage);
+      const future = n.ageBand === "futuro";
+      const immediate = n.level === "urgente" || n.level === "mejorable";
+      const filters: ScoutAssignment["filters"] = [
+        { label: "Posición / rol", value: `${POSITION_LABEL_ES[n.slot]} · ${n.role.es} (${n.role.duty === "D" ? "defender" : n.role.duty === "S" ? "apoyo" : n.role.duty === "A" ? "atacar" : n.role.duty})` },
+        { label: "Edad", value: future ? "17-23" : immediate ? "22-29" : "20-27" },
+        { label: "Habilidad actual", value: immediate ? "≥ nivel del primer equipo (≈3 estrellas; mín. 2,5)" : "≥ 2 estrellas y potencial ≥ 4" },
+        { label: "Nivel en la app", value: `≥ ${Math.round(n.targetScore)} para rotar, ≥ ${Math.round(n.upgradeScore)} para mejorar al titular` },
+        { label: "Sueldo", value: wageCap != null ? `≤ ${fmtMoney(wageCap)}${budget.wage == null ? " (titular +20 %)" : ""}` : "según estructura" },
+        { label: "Valor", value: budget.transfer != null ? `≤ ${fmtMoney(budget.transfer)}` : "según presupuesto" },
+        { label: "Situación", value: immediate ? "cualquiera; marca también «contrato termina en 12 meses» y «transferibles» para abaratar" : "contrato termina en 12 meses / transferibles / cedibles" },
+      ];
+      if (future) filters.push({ label: "Personalidad", value: "Determinación ≥ 12; descartar ambición baja y profesionalidad baja" });
+      return {
+        need: n,
+        priority: immediate ? "maxima" : "normal",
+        scoutProfile: immediate ? "el de mayor Juzgar habilidad (JPA); dos ojeadores si es urgente" : "el de mayor Juzgar potencial (JPP); un ojeador, ≈1 mes",
+        filters,
+        note: n.reasons.join(" "),
+      };
+    });
+}
+
+const POSITION_LABEL_ES: Record<PositionSlot, string> = {
+  GK: "POR", DL: "DF (I)", DC: "DF (C)", DR: "DF (D)", WBL: "CR (I)", WBR: "CR (D)", DM: "MC",
+  ML: "ME (I)", MC: "ME (C)", MR: "ME (D)", AML: "MP (I)", AMC: "MP (C)", AMR: "MP (D)", ST: "DL",
+};
+
+/** Consejos generales de la guía, para el panel lateral. */
+export const SCOUTING_TIPS: string[] = [
+  "Ojeadores: Juzgar habilidad y Juzgar potencial ≥15 en un club grande (≥10 en divisiones bajas); Adaptabilidad alta para los que rotan de país.",
+  "Reparte perfiles: uno itinerante (adaptabilidad) que abra conocimiento de regiones, uno de cantera (potencial), uno de rivales y uno general (habilidad + potencial).",
+  "Prioridad máxima solo para necesidades a corto plazo (2 ojeadores, semanas); normal para construir conocimiento de una región, empezando meses antes del mercado.",
+  "Un informe es fiable a partir de recomendación B+ y con conocimiento alto; con atributos en rango, «ojear a fondo» antes de ofertar.",
+  "Truco de presupuesto: sube el alcance a Mundial sin avanzar el tiempo, haz las búsquedas y listas, y vuelve al alcance barato antes del cobro mensual.",
+  "Conocimiento: segunda nacionalidad del entrenador en la región objetivo (50-80 % de conocimiento) y clubes afiliados que compartan ojeo.",
+];
