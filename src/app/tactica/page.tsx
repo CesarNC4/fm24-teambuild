@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { FORMATIONS } from "@/lib/fm/formations";
-import { INSTRUCTIONS, INSTRUCTION_BY_ID, PHASE_LABEL, STYLE_BY_ID, STYLE_PRESETS, fitTone, instructionFit, type InstructionPhase } from "@/lib/fm/instructions";
+import { INSTRUCTIONS, INSTRUCTION_BY_ID, MENTALITIES, MENTALITY_BY_ID, PHASE_LABEL, STYLE_BY_ID, STYLE_PRESETS, fitTone, instructionFit, type InstructionPhase } from "@/lib/fm/instructions";
+import { tacticAdvice } from "@/lib/fm/advice";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
 import { buildLineup, newTactic, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
 import { strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
@@ -45,6 +46,7 @@ export default function TacticPage() {
 
   const lineup: LineupResult | null = useMemo(() => (tactic && players.length ? buildLineup(tactic, players) : null), [tactic, players]);
   const warnings = useMemo(() => (tactic ? tacticWarnings(tactic) : []), [tactic]);
+  const advice = useMemo(() => (tactic && lineup ? tacticAdvice(tactic, lineup) : []), [tactic, lineup]);
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
   const piBySlot = useMemo(() => {
     const m = new Map<string, PISuggestion[]>();
@@ -88,8 +90,17 @@ export default function TacticPage() {
   };
   const applyStyle = (styleId: string) => {
     const st = STYLE_BY_ID[styleId];
-    updateTactic(tactic.id, { styleId, instructions: st ? [...st.instructions] : [] });
+    updateTactic(tactic.id, { styleId, instructions: st ? [...st.instructions] : [], mentality: st?.mentalityId ?? tactic.mentality });
   };
+  /** Activa una instrucción respetando su grupo de exclusión. */
+  const applyInstruction = (id: string) =>
+    updateTactic(tactic.id, (t) => {
+      const instr = INSTRUCTION_BY_ID[id];
+      let next = t.instructions.filter((x) => x !== id);
+      if (instr.group) next = next.filter((x) => INSTRUCTION_BY_ID[x].group !== instr.group);
+      return { ...t, instructions: [...next, id], styleId: null };
+    });
+  const removeInstruction = (id: string) => updateTactic(tactic.id, (t) => ({ ...t, instructions: t.instructions.filter((x) => x !== id), styleId: null }));
   const toggleInstruction = (id: string) =>
     updateTactic(tactic.id, (t) => {
       const instr = INSTRUCTION_BY_ID[id];
@@ -121,6 +132,14 @@ export default function TacticPage() {
         <select className="bg-surface border border-border rounded px-2 py-1" value={tactic.styleId ?? ""} onChange={(e) => e.target.value && applyStyle(e.target.value)}>
           <option value="">Estilo: personalizado</option>
           {STYLE_PRESETS.map((s) => <option key={s.id} value={s.id}>Estilo: {s.name}</option>)}
+        </select>
+        <select
+          className="bg-surface border border-border rounded px-2 py-1"
+          value={tactic.mentality ?? "equilibrada"}
+          title={MENTALITY_BY_ID[tactic.mentality ?? "equilibrada"]?.idea}
+          onChange={(e) => updateTactic(tactic.id, { mentality: e.target.value })}
+        >
+          {MENTALITIES.map((m) => <option key={m.id} value={m.id} title={m.idea}>Mentalidad: {m.name}</option>)}
         </select>
         <button className="px-2 py-1 rounded border border-border hover:bg-surface-2" onClick={() => addTactic(newTactic(tactic.formationId, `${tactic.name} (copia)`))}>
           Nueva
@@ -234,6 +253,27 @@ export default function TacticPage() {
           El número es la media (1-20) de los atributos que la instrucción exige a los titulares afectados; manda el requisito más débil.
           Elige un estilo arriba para cargar un conjunto coherente y ajústalo aquí.
         </p>
+        {advice.length > 0 && (
+          <div className="bg-surface border border-border rounded-lg p-3 space-y-1.5">
+            <h3 className="font-medium text-sm">Consejos para esta táctica y este XI</h3>
+            {advice.map((a, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs">
+                <span className={a.level === "warn" ? "text-attr-mid" : a.level === "tip" ? "text-attr-good" : "text-muted"}>{a.level === "warn" ? "⚠" : a.level === "tip" ? "→" : "ℹ"}</span>
+                <span className="flex-1">{a.text}</span>
+                {a.apply && (
+                  <button className="text-[10px] px-1.5 rounded border border-border hover:bg-surface-2 whitespace-nowrap" onClick={() => applyInstruction(a.apply!)}>
+                    activar «{INSTRUCTION_BY_ID[a.apply].name}»
+                  </button>
+                )}
+                {a.remove && (
+                  <button className="text-[10px] px-1.5 rounded border border-border hover:bg-surface-2 whitespace-nowrap" onClick={() => removeInstruction(a.remove!)}>
+                    quitar «{INSTRUCTION_BY_ID[a.remove].name}»
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="grid md:grid-cols-3 gap-3">
           {(["posesion", "transicion", "sin-balon"] as InstructionPhase[]).map((phase) => (
             <div key={phase} className="bg-surface border border-border rounded-lg p-3">

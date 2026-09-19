@@ -50,9 +50,19 @@ Si no quieres habilitar Corepack, antepón `corepack` a cada comando
 - `src/lib/fm/scoring.ts` – puntuación 0-100 por rol
 - `src/lib/store.ts` – estado persistente (zustand + IndexedDB)
 - `src/lib/fm/formations.ts`, `tactics.ts`, `instructions.ts` – formaciones, mejor XI (húngaro), avisos e instrucciones con encaje
+- `src/lib/fm/advice.ts` – consejos contextuales de instrucciones (anchura, líneas, presión, portero, centros…)
+- `src/lib/fm/playerInstructions.ts` – instrucciones individuales y sugerencias por titular
 - `src/lib/fm/traits.ts` – catálogo de rasgos, compatibilidad por rol y sugerencias
 - `src/lib/fm/training.ts` – foco individual, calendario semanal y tutorías
 - `src/app/*` – páginas (Importar, Plantilla, Roles, Táctica, Rasgos, Entrenamiento)
+
+## Fuentes
+
+Las reglas de roles, rasgos, instrucciones y atributos siguen las guías de
+[Passion4FM](https://www.passion4fm.com/) (rasgos, atributos, instrucciones de
+jugador, parejas de roles), la guía "Roles and Combinations" de Magicomonta
+(rol × estilo, bandas con uno o dos jugadores, rombo) y una guía comunitaria de
+instrucciones de equipo y mentalidad. Son consejos, no reglas del motor.
 
 `refs/` (ignorado por git) contiene repositorios de la comunidad usados como
 referencia: FM24-Player-Analyzer (GPL-3), pyscoutfm (MIT), fm_player_ranking.

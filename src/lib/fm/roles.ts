@@ -119,9 +119,10 @@ const FAMILIES: Family[] = [
   {
     code: "FB", en: "Full-Back", es: "Lateral", positions: DRL,
     duties: {
-      D: { key: ["Mar", "Tck", "Ant", "Cnt", "Pos"], pref: ["Cro", "Pas", "Dec", "Tea", "Wor", "Pac", "Sta"] },
-      S: { key: ["Mar", "Tck", "Ant", "Cnt", "Pos", "Tea"], pref: ["Cro", "Dri", "Pas", "Tec", "Dec", "Wor", "Pac", "Sta"] },
-      A: { key: ["Cro", "Mar", "Tck", "Ant", "Pos", "Tea"], pref: ["Dri", "Fir", "Pas", "Tec", "Cnt", "Dec", "OtB", "Wor", "Agi", "Pac", "Sta"] },
+      // Cabeceo no lo resalta el juego pero importa en laterales (guía Magicomonta)
+      D: { key: ["Mar", "Tck", "Ant", "Cnt", "Pos"], pref: ["Cro", "Hea", "Pas", "Dec", "Tea", "Wor", "Pac", "Sta"] },
+      S: { key: ["Mar", "Tck", "Ant", "Cnt", "Pos", "Tea"], pref: ["Cro", "Dri", "Hea", "Pas", "Tec", "Dec", "Wor", "Pac", "Sta"] },
+      A: { key: ["Cro", "Mar", "Tck", "Ant", "Pos", "Tea"], pref: ["Dri", "Fir", "Hea", "Pas", "Tec", "Cnt", "Dec", "OtB", "Wor", "Agi", "Pac", "Sta"] },
     },
   },
   {
@@ -139,7 +140,7 @@ const FAMILIES: Family[] = [
   {
     code: "WB", en: "Wing-Back", es: "Carrilero", positions: WB,
     duties: {
-      D: { key: ["Mar", "Tck", "Ant", "Pos", "Tea", "Wor", "Acc", "Sta"], pref: ["Cro", "Dri", "Fir", "Pas", "Tec", "Cnt", "Dec", "OtB", "Agi", "Bal", "Pac"] },
+      D: { key: ["Mar", "Tck", "Ant", "Pos", "Tea", "Wor", "Acc", "Sta"], pref: ["Cro", "Dri", "Fir", "Hea", "Pas", "Tec", "Cnt", "Dec", "OtB", "Agi", "Bal", "Pac"] },
       S: { key: ["Cro", "Dri", "Mar", "Tck", "OtB", "Tea", "Wor", "Acc", "Sta"], pref: ["Fir", "Pas", "Tec", "Ant", "Cnt", "Dec", "Pos", "Agi", "Bal", "Pac"] },
       A: { key: ["Cro", "Dri", "Tck", "OtB", "Tea", "Wor", "Acc", "Sta"], pref: ["Fir", "Mar", "Pas", "Tec", "Ant", "Cnt", "Dec", "Fla", "Pos", "Agi", "Bal", "Pac"] },
     },

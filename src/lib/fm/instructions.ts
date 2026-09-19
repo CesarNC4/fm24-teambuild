@@ -14,9 +14,10 @@ export type InstructionPhase = "posesion" | "transicion" | "sin-balon";
 
 /** Grupo de exclusión: solo una instrucción activa por grupo. */
 export type InstructionGroup =
-  | "pases" | "ritmo" | "amplitud" | "creatividad" | "regate"
-  | "trans-def" | "trans-atq" | "distribucion"
-  | "linea-def" | "linea-presion" | "presion" | "marcaje" | "entradas"
+  | "pases" | "ritmo" | "amplitud" | "creatividad" | "regate" | "centros"
+  | "desmarque-izq" | "desmarque-der" | "explotar"
+  | "trans-def" | "trans-atq" | "distribucion" | "gk-tipo" | "gk-destino"
+  | "linea-def" | "linea-presion" | "presion" | "marcaje" | "entradas" | "anchura-def"
   | null;
 
 export interface Requirement {
@@ -88,6 +89,31 @@ export const INSTRUCTIONS: Instruction[] = [
     reqs: [{ positions: ATT, attrs: ["Fla", "Vis", "Tec", "Dec"], why: "libertad para improvisar sin desordenarse" }] },
   { id: "mas-disciplina", name: "Más disciplina", phase: "posesion", group: "creatividad",
     reqs: [{ positions: [], attrs: ["Tea", "Dec", "Pos", "Cnt"], why: "cumplir el plan sin salirse del guion" }] },
+  { id: "desmarque-fuera-izq", name: "Desmarque por fuera (izquierda)", phase: "posesion", group: "desmarque-izq",
+    reqs: [{ positions: ["DL", "WBL"], attrs: ["OtB", "Sta", "Cro", "Acc"], why: "el lateral izquierdo dobla por fuera y centra" }] },
+  { id: "desmarque-dentro-izq", name: "Desmarque por dentro (izquierda)", phase: "posesion", group: "desmarque-izq",
+    reqs: [{ positions: ["DL", "WBL"], attrs: ["OtB", "Pas", "Dec", "Fir"], why: "el lateral izquierdo entra por el pasillo interior" }] },
+  { id: "desmarque-fuera-der", name: "Desmarque por fuera (derecha)", phase: "posesion", group: "desmarque-der",
+    reqs: [{ positions: ["DR", "WBR"], attrs: ["OtB", "Sta", "Cro", "Acc"], why: "el lateral derecho dobla por fuera y centra" }] },
+  { id: "desmarque-dentro-der", name: "Desmarque por dentro (derecha)", phase: "posesion", group: "desmarque-der",
+    reqs: [{ positions: ["DR", "WBR"], attrs: ["OtB", "Pas", "Dec", "Fir"], why: "el lateral derecho entra por el pasillo interior" }] },
+  { id: "explotar-izq", name: "Explotar la banda izquierda", phase: "posesion", group: null,
+    reqs: [{ positions: ["DL", "WBL", "ML", "AML"], attrs: ["Cro", "Dri", "Acc", "Dec"], why: "los de esa banda serán más directos" }] },
+  { id: "explotar-der", name: "Explotar la banda derecha", phase: "posesion", group: null,
+    reqs: [{ positions: ["DR", "WBR", "MR", "AMR"], attrs: ["Cro", "Dri", "Acc", "Dec"], why: "los de esa banda serán más directos" }] },
+  { id: "explotar-centro", name: "Explotar el centro", phase: "posesion", group: "explotar",
+    reqs: [{ positions: ["DM", "MC", "AMC", "ST"], attrs: ["Pas", "Fir", "Vis", "OtB", "Dec"], why: "los del centro serán más directos; las bandas, más pasivas" }] },
+  { id: "centros-mixtos", name: "Centros mixtos", phase: "posesion", group: "centros",
+    reqs: [{ positions: ["ST", "AMC"], attrs: ["Hea", "Jum", "OtB", "Acc"], why: "rematadores buenos por arriba y por abajo" }] },
+  { id: "centros-rasos", name: "Centros rasos", phase: "posesion", group: "centros",
+    reqs: [{ positions: ["ST", "AMC", "MC"], attrs: ["Acc", "OtB", "Fin", "Ant"], why: "delantero rápido y llegadores al borde del área (recortes atrás)" }] },
+  { id: "centros-rosca", name: "Centros con rosca", phase: "posesion", group: "centros",
+    reqs: [{ positions: WIDE, attrs: ["Cro", "Tec"], why: "centros rápidos y con efecto: el centrador debe ser muy bueno" }] },
+  { id: "centros-colgados", name: "Centros colgados", phase: "posesion", group: "centros",
+    reqs: [{ positions: ["ST"], attrs: ["Hea", "Jum", "Str"], why: "el balón llega sin fuerza; el delantero debe ganar el duelo aéreo" }] },
+  { id: "balon-parado", name: "Jugar para el balón parado", phase: "posesion", group: null,
+    reqs: [{ positions: CB, attrs: ["Hea", "Jum", "Str"], why: "los centrales suben a rematar córners y faltas" }] },
+  { id: "perder-tiempo", name: "Perder tiempo", phase: "posesion", group: null, reqs: [] },
 
   // ------------------------------------------------------------- Transición
   { id: "contrapresionar", name: "Contrapresionar", phase: "transicion", group: "trans-def",
@@ -102,6 +128,27 @@ export const INSTRUCTIONS: Instruction[] = [
     reqs: [{ positions: GK, attrs: ["Thr", "Kic", "Vis", "Dec"], why: "el portero lanza el contragolpe" }] },
   { id: "distribuir-lento", name: "Distribuir con calma (portero)", phase: "transicion", group: "distribucion",
     reqs: [{ positions: GK, attrs: ["Cmp", "Kic", "Pas", "Dec"], why: "el portero inicia con criterio y sin regalar el balón" }] },
+  { id: "gk-rodar", name: "Portero: rodar el balón", phase: "transicion", group: "gk-tipo",
+    reqs: [{ positions: GK, attrs: ["Cnt", "Dec"], why: "para porteros con mal pie o mal saque de mano pero concentrados" }] },
+  { id: "gk-saque-corto", name: "Portero: saque corto", phase: "transicion", group: "gk-tipo",
+    reqs: [{ positions: GK, attrs: ["Kic", "Pas"], why: "buen saque de puerta y pases" }] },
+  { id: "gk-mano-largo", name: "Portero: saque de mano largo", phase: "transicion", group: "gk-tipo",
+    reqs: [{ positions: GK, attrs: ["Thr", "Vis"], why: "buen saque de mano y visión" }] },
+  { id: "gk-saque-largo", name: "Portero: saque largo", phase: "transicion", group: "gk-tipo",
+    reqs: [{ positions: GK, attrs: ["Kic", "Vis"], why: "buen saque de puerta y visión" }] },
+  { id: "gk-a-defensas", name: "Portero: distribuir a los defensas", phase: "transicion", group: "gk-destino",
+    reqs: [{ positions: CB, attrs: ["Fir", "Pas", "Cmp"], why: "los centrales reciben bajo presión" }] },
+  { id: "gk-por-encima", name: "Portero: distribuir por encima de la defensa", phase: "transicion", group: "gk-destino",
+    reqs: [
+      { positions: GK, attrs: ["Kic", "Vis"], why: "saque largo preciso" },
+      { positions: ["ST"], attrs: ["Acc", "Pac", "OtB"], why: "el delantero debe ganar la carrera; funciona contra líneas altas" },
+    ] },
+  { id: "gk-al-referencia", name: "Portero: distribuir al delantero referencia", phase: "transicion", group: "gk-destino",
+    reqs: [{ positions: ["ST"], attrs: ["Hea", "Jum", "Str", "Fir"], why: "el referencia aguanta y descarga; salta el medio campo" }] },
+  { id: "gk-a-bandas", name: "Portero: distribuir a las bandas", phase: "transicion", group: "gk-destino",
+    reqs: [{ positions: ["ML", "MR", "AML", "AMR", "WBL", "WBR"], attrs: ["Fir", "Dri", "Hea", "Str"], why: "los de banda deben retener el balón contra su par" }] },
+  { id: "gk-al-organizador", name: "Portero: distribuir al organizador", phase: "transicion", group: "gk-destino",
+    reqs: [{ positions: ["DM", "MC"], attrs: ["Fir", "Pas", "Cmp", "Vis"], why: "el organizador más retrasado inicia; riesgo si le hacen marcaje al hombre" }] },
 
   // ------------------------------------------------------------- Sin balón
   { id: "linea-def-baja", name: "Línea defensiva más baja", phase: "sin-balon", group: "linea-def",
@@ -129,6 +176,10 @@ export const INSTRUCTIONS: Instruction[] = [
     reqs: [{ positions: DEF, attrs: ["Mar", "Str", "Pos", "Ant"], why: "duelos individuales" }] },
   { id: "entradas-duras", name: "Entradas más duras", phase: "sin-balon", group: "entradas",
     reqs: [{ positions: [...DEF, ...MID], attrs: ["Tck", "Agg", "Bra", "Dec"], why: "agresividad sin regalar faltas" }] },
+  { id: "anchura-def-estrecha", name: "Anchura defensiva más estrecha", phase: "sin-balon", group: "anchura-def",
+    reqs: [{ positions: [...CB, "DL", "DR", "WBL", "WBR"], attrs: ["Hea", "Jum", "Mar", "Str"], why: "llegarán más centros: la zaga debe ganar por arriba" }] },
+  { id: "anchura-def-amplia", name: "Anchura defensiva más amplia", phase: "sin-balon", group: "anchura-def",
+    reqs: [{ positions: [...CB, "DL", "DR", "WBL", "WBR"], attrs: ["Pac", "Agi", "Ant", "Pos"], why: "se cubre la banda con movilidad e inteligencia; el centro queda menos poblado" }] },
   { id: "mantenerse-pie", name: "Mantenerse de pie", phase: "sin-balon", group: "entradas",
     reqs: [{ positions: [...DEF, ...MID], attrs: ["Pos", "Ant", "Cnt", "Mar"], why: "contener sin ir al suelo" }] },
 ];
@@ -142,6 +193,37 @@ export const PHASE_LABEL: Record<InstructionPhase, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Mentalidad
+// ---------------------------------------------------------------------------
+
+export interface Mentality {
+  id: string;
+  name: string;
+  /** Qué busca el equipo con esa mentalidad. */
+  idea: string;
+  /** -3 … +3 */
+  level: number;
+}
+
+export const MENTALITIES: Mentality[] = [
+  { id: "muy-defensiva", name: "Muy defensiva", level: -3, idea: "Sacrifica toda oportunidad para negar al rival (contención)." },
+  { id: "defensiva", name: "Defensiva", level: -2, idea: "Asume que no puede disputar la posesión; juega para reducir las ocasiones del rival." },
+  { id: "cauta", name: "Cauta", level: -1, idea: "Juega por el espacio: niega al rival y ataca los espacios que deja." },
+  { id: "equilibrada", name: "Equilibrada", level: 0, idea: "Juega por la posesión sin riesgo, o arriesga solo para recuperarla." },
+  { id: "positiva", name: "Positiva", level: 1, idea: "Control: juega por la posesión, accede a espacios pequeños y se la niega al rival." },
+  { id: "atacante", name: "Atacante", level: 2, idea: "Asume que la posesión está asegurada y busca crear muchas ocasiones." },
+  { id: "muy-atacante", name: "Muy atacante", level: 3, idea: "Sacrifica toda la posesión por la oportunidad (desbordar)." },
+];
+
+export const MENTALITY_BY_ID: Record<string, Mentality> = Object.fromEntries(MENTALITIES.map((m) => [m.id, m]));
+
+/** Lo que sube o baja la mentalidad, según la guía: sirve de recordatorio en la UI. */
+export const MENTALITY_EFFECTS = {
+  up: ["amplitud", "distancia de pase y ritmo", "intensidad de presión", "líneas defensivas", "marcaje y riesgo en entradas", "creatividad, libertad y pases arriesgados", "carreras y regates", "velocidad de contrapresión y contraataque", "riesgo en la distribución del portero"],
+  down: ["amplitud", "distancia de pase y ritmo", "intensidad de presión", "líneas defensivas", "disciplina, colocación y pase seguro ↑", "carreras y regates ↓", "defensa pasiva negando espacio ↑", "velocidad de reagrupamiento ↑", "contraataques ↓"],
+};
+
+// ---------------------------------------------------------------------------
 // Estilos predefinidos
 // ---------------------------------------------------------------------------
 
@@ -150,6 +232,8 @@ export interface StylePreset {
   name: string;
   description: string;
   mentality: string;
+  /** id de MENTALITIES */
+  mentalityId: string;
   instructions: string[];
 }
 
@@ -158,42 +242,42 @@ export const STYLE_PRESETS: StylePreset[] = [
     id: "transiciones",
     name: "Transiciones rápidas",
     description: "Recuperar y atacar el espacio en pocos pases. Presión media-alta, ritmo alto y verticalidad.",
-    mentality: "Positiva",
+    mentality: "Positiva", mentalityId: "positiva",
     instructions: ["pases-directos", "ritmo-alto", "pasar-espacio", "encarar", "contrapresionar", "contraatacar", "distribuir-rapido", "linea-presion-media", "presionar-mas"],
   },
   {
     id: "gegenpress",
     name: "Gegenpress",
     description: "Presión asfixiante arriba, línea alta y recuperación inmediata. Exige mucho físico.",
-    mentality: "Positiva / Atacante",
+    mentality: "Positiva / Atacante", mentalityId: "positiva",
     instructions: ["pases-cortos", "ritmo-alto", "salir-jugando", "contrapresionar", "contraatacar", "distribuir-rapido", "linea-def-alta", "linea-presion-alta", "presionar-mas", "impedir-saque-corto", "fuera-de-juego"],
   },
   {
     id: "posesion",
     name: "Control de posesión",
     description: "Dominar con el balón, ritmo bajo y paciencia en el último tercio.",
-    mentality: "Positiva",
+    mentality: "Positiva", mentalityId: "positiva",
     instructions: ["pases-cortos", "ritmo-bajo", "amplitud-amplia", "salir-jugando", "trabajar-area", "contrapresionar", "mantener-forma", "distribuir-lento", "linea-def-alta", "linea-presion-alta", "presionar-mas"],
   },
   {
     id: "tiki-vertical",
     name: "Tiki-taka vertical",
     description: "Pases cortos pero a ritmo alto buscando siempre el espacio.",
-    mentality: "Positiva",
+    mentality: "Positiva", mentalityId: "positiva",
     instructions: ["pases-cortos", "ritmo-alto", "pasar-espacio", "salir-jugando", "contrapresionar", "contraatacar", "distribuir-rapido", "linea-def-alta", "linea-presion-alta", "presionar-mas"],
   },
   {
     id: "bloque-bajo",
     name: "Bloque bajo y contragolpe",
     description: "Defender compacto cerca del área y salir rápido al espacio.",
-    mentality: "Cauta / Equilibrada",
+    mentality: "Cauta / Equilibrada", mentalityId: "cauta",
     instructions: ["pases-directos", "ritmo-alto", "pasar-espacio", "reagruparse", "contraatacar", "distribuir-rapido", "linea-def-baja", "linea-presion-baja", "presionar-menos", "marcaje-estricto"],
   },
   {
     id: "directo",
     name: "Juego directo por bandas",
     description: "Balón largo al referencia, centros tempranos y segundas jugadas.",
-    mentality: "Equilibrada",
+    mentality: "Equilibrada", mentalityId: "equilibrada",
     instructions: ["pases-directos", "amplitud-amplia", "centros-tempranos", "reagruparse", "mantener-forma", "linea-def-baja", "linea-presion-media", "entradas-duras"],
   },
 ];
