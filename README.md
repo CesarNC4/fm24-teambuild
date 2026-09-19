@@ -36,8 +36,10 @@ Si no quieres habilitar Corepack, antepón `corepack` a cada comando
 
 - `minimumReleaseAge: 10080` — no se instala ninguna versión publicada hace
   menos de 7 días; la mayoría de paquetes comprometidos se retiran antes.
-- `onlyBuiltDependencies: []` — ningún paquete ejecuta scripts de instalación.
-  Si alguno lo necesita, se añade a la lista de forma explícita.
+- `allowBuilds` — decisión explícita por cada paquete con scripts de
+  instalación; todos a `false` (bloqueados). pnpm 12 falla la instalación si
+  aparece un paquete nuevo con scripts sin decisión: entonces se revisa y se
+  añade a la lista (normalmente `false`).
 - Sin *hoisting*: solo se puede importar lo declarado en `package.json`.
 
 ## Estructura

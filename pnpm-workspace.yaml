@@ -1,16 +1,17 @@
-allowBuilds:
-  esbuild: set this to true or false
-  unrs-resolver: set this to true or false
-
-# Configuración de pnpm (desde v10 vive aquí, no en .npmrc).
+# Configuración de pnpm 12 (vive aquí, no en .npmrc).
 
 # No instalar versiones publicadas hace menos de 7 días (en minutos).
 # La mayoría de paquetes comprometidos se detectan y retiran en 24-72 h.
 minimumReleaseAge: 10080
 
-# Ningún paquete puede ejecutar scripts de instalación (preinstall/postinstall).
-# Si algo lo necesita de verdad, se añade aquí de forma explícita.
-onlyBuiltDependencies: []
+# Scripts de instalación (preinstall/postinstall). pnpm 12 exige una decisión
+# explícita por cada paquete que los tenga; sin ella `pnpm install` falla.
+# false = bloqueado. Solo se pone true si el paquete no funciona sin él.
+#   esbuild        – comprueba su binario; funciona igual con el paquete nativo opcional
+#   unrs-resolver  – idem, resolvedor nativo usado por eslint-config-next
+allowBuilds:
+  esbuild: false
+  unrs-resolver: false
 
 # Solo se resuelven dependencias declaradas en package.json (sin "hoisting"
 # de paquetes fantasma al node_modules raíz).
