@@ -13,6 +13,7 @@ import type { AttrKey } from "./attributes";
 import type { RoleDef } from "./roles";
 import { TRAIT_BY_ID, type TraitDef } from "./traits";
 import type { Player, PositionSlot } from "./types";
+import { styleTraits } from "./instructions";
 
 export type PIGroup =
   | "movimiento" | "anchura" | "canales" | "libertad" | "aguantar"
@@ -95,10 +96,10 @@ export interface PIContext {
   strikerAerial: number;
 }
 
-const COUNTER_STYLES = new Set(["transiciones", "bloque-bajo", "directo"]);
-const PRESS_STYLES = new Set(["gegenpress", "tiki-vertical", "transiciones", "posesion"]);
-const POSSESSION_STYLES = new Set(["posesion", "tiki-vertical"]);
-const DEEP_STYLES = new Set(["bloque-bajo", "directo"]);
+const COUNTER_STYLES = { has: (s: string) => styleTraits(s).counter && !styleTraits(s).possession };
+const PRESS_STYLES = { has: (s: string) => styleTraits(s).pressing };
+const POSSESSION_STYLES = { has: (s: string) => styleTraits(s).possession };
+const DEEP_STYLES = { has: (s: string) => styleTraits(s).deep };
 
 const WIDE_SLOTS: PositionSlot[] = ["ML", "MR", "AML", "AMR", "WBL", "WBR", "DL", "DR"];
 const HOLDER_ROLES = new Set(["A-D", "DM-D", "HB-D", "DLP-D", "CM-D", "BWM-D", "DM-S"]);

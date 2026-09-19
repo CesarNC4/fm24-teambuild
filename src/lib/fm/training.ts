@@ -177,7 +177,12 @@ const STYLE_SESSIONS: Record<string, { attack: string[]; defend: string[]; physi
   posesion: { attack: ["att-patient", "chance-creation", "att-movement", "ball-retention"], defend: ["def-shape", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "resistance"] },
   "tiki-vertical": { attack: ["att-movement", "chance-creation", "att-direct", "ball-retention"], defend: ["transition-press", "def-front", "def-shape", "def-shadow"], physical: ["quickness", "endurance"] },
   "bloque-bajo": { attack: ["att-direct", "chance-conversion", "att-wings", "att-shadow"], defend: ["def-disengaged", "transition-restrict", "def-shape", "def-shadow"], physical: ["quickness", "resistance"] },
-  directo: { attack: ["att-wings", "att-direct", "chance-conversion", "sp-attacking"], defend: ["def-shape", "def-disengaged", "def-wide", "sp-defending"], physical: ["resistance", "endurance"] },
+  "tiki-taka": { attack: ["att-patient", "ball-retention", "att-movement", "chance-creation"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
+  "contra-fluido": { attack: ["att-movement", "att-direct", "chance-creation", "att-shadow"], defend: ["def-shape", "transition-restrict", "def-disengaged", "def-shadow"], physical: ["quickness", "endurance"] },
+  "route-one": { attack: ["att-direct", "att-wings", "chance-conversion", "sp-attacking"], defend: ["def-shape", "def-disengaged", "def-wide", "sp-defending"], physical: ["resistance", "endurance"] },
+  bandas: { attack: ["att-wings", "chance-creation", "chance-conversion", "att-shadow"], defend: ["def-wide", "def-shape", "transition-restrict", "def-shadow"], physical: ["quickness", "endurance"] },
+  autobus: { attack: ["att-direct", "chance-conversion", "sp-attacking", "att-shadow"], defend: ["def-disengaged", "def-shape", "def-wide", "def-shadow"], physical: ["resistance", "endurance"] },
+  catenaccio: { attack: ["att-direct", "att-wings", "chance-conversion", "att-shadow"], defend: ["def-shape", "def-disengaged", "transition-restrict", "def-shadow"], physical: ["resistance", "quickness"] },
   default: { attack: ["att-movement", "chance-creation", "att-direct", "att-shadow"], defend: ["def-shape", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
 };
 
@@ -227,7 +232,7 @@ const GOAL_SESSIONS: Record<Exclude<WeekGoal, "normal">, { attack: string[]; def
  */
 export function buildWeek(opts: WeekOptions): DayPlan[] {
   const goal = opts.goal ?? "normal";
-  const base = STYLE_SESSIONS[opts.styleId ?? "default"] ?? STYLE_SESSIONS.default;
+  const base = STYLE_SESSIONS[opts.styleId === "directo" ? "bandas" : opts.styleId ?? "default"] ?? STYLE_SESSIONS.default;
   const st = goal === "normal" ? base : { ...base, ...GOAL_SESSIONS[goal] };
   const wk = opts.weekIndex ?? 0;
   const matchSet = new Set(opts.matchDays);

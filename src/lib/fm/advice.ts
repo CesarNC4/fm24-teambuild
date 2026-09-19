@@ -7,7 +7,7 @@
  * aplicadas a la formación, los roles, las instrucciones activas y el XI.
  */
 
-import { INSTRUCTION_BY_ID, MENTALITY_BY_ID, STYLE_BY_ID } from "./instructions";
+import { INSTRUCTION_BY_ID, MENTALITY_BY_ID, STYLE_BY_ID, styleTraits } from "./instructions";
 import type { LineupResult, SlotResult, Tactic } from "./tactics";
 import type { AttrKey } from "./attributes";
 import type { PositionSlot } from "./types";
@@ -187,11 +187,11 @@ export function tacticAdvice(tactic: Tactic, lineup: LineupResult): Advice[] {
     const hasTarget = slots.some((s) => role(s).code === "TF");
     const deepPlaymaker = dm.find((s) => ["DLP", "REG", "HB"].includes(role(s).code));
     const fastStrikers = strikers.some((s) => attr(s, "Acc") >= 15 && attr(s, "Pac") >= 15);
-    const possession = style === "posesion" || style === "tiki-vertical";
+    const possession = styleTraits(style).possession;
     const hasDest = tactic.instructions.some((i) => INSTRUCTION_BY_ID[i]?.group === "gk-destino");
     if (!hasDest) {
       if (hasTarget && (kic >= 12 || thr >= 12)) out.push({ level: "tip", text: "Tienes un Delantero referencia: distribuir al referencia salta el medio campo y llega al último tercio rápido. Si el rival pone otro cabeceador, deja de funcionar.", apply: "gk-al-referencia" });
-      else if (fastStrikers && kic >= 15 && ["transiciones", "bloque-bajo", "directo"].includes(style)) out.push({ level: "tip", text: `Delantero muy rápido y ${gkName} con Saque de puerta ${kic}: distribuir por encima de la defensa castiga líneas altas.`, apply: "gk-por-encima" });
+      else if (fastStrikers && kic >= 15 && styleTraits(style).counter && !possession) out.push({ level: "tip", text: `Delantero muy rápido y ${gkName} con Saque de puerta ${kic}: distribuir por encima de la defensa castiga líneas altas.`, apply: "gk-por-encima" });
       else if (possession && mean(cbs, ["Pas", "Fir", "Cmp"])! >= 12) out.push({ level: "tip", text: "Estilo de posesión con centrales que saben jugar: distribuir a los defensas.", apply: "gk-a-defensas" });
       else if (deepPlaymaker && attr(deepPlaymaker, "Fir") >= 13 && attr(deepPlaymaker, "Cmp") >= 13) out.push({ level: "tip", text: `${deepPlaymaker.starter!.player.name} es el organizador más retrasado: distribuir al organizador da una salida menos arriesgada (cuidado si le marcan al hombre).`, apply: "gk-al-organizador" });
     }

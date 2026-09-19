@@ -230,59 +230,202 @@ export const MENTALITY_EFFECTS = {
 export interface StylePreset {
   id: string;
   name: string;
+  /** Nombre del preset del juego (guía de estilos de Passion4FM). */
+  en: string;
   description: string;
   mentality: string;
   /** id de MENTALITIES */
   mentalityId: string;
   instructions: string[];
+  /** Rasgos del estilo que usan los avisos y las instrucciones individuales. */
+  traits: { possession: boolean; pressing: boolean; counter: boolean; deep: boolean };
+  /** Formaciones recomendadas (ids de FORMATIONS). */
+  formations: string[];
+  /** Atributos clave por unidad para medir el encaje con la plantilla. */
+  attrs: { def: AttrKey[]; mid: AttrKey[]; att: AttrKey[] };
+  /** Códigos de rol (sin deber) que el estilo pide y que le sientan mal. */
+  roles: { favor: string[]; avoid: string[] };
+  strengths: string[];
+  weaknesses: string[];
+  when: string;
 }
 
 export const STYLE_PRESETS: StylePreset[] = [
   {
     id: "transiciones",
     name: "Transiciones rápidas",
-    description: "Recuperar y atacar el espacio en pocos pases. Presión media-alta, ritmo alto y verticalidad.",
+    en: "Fast transitions (custom)",
+    description: "Recuperar en bloque medio-alto y atacar el espacio en pocos pases. Ritmo alto, verticalidad y contrapresión.",
     mentality: "Positiva", mentalityId: "positiva",
     instructions: ["pases-directos", "ritmo-alto", "pasar-espacio", "encarar", "contrapresionar", "contraatacar", "distribuir-rapido", "linea-presion-media", "presionar-mas"],
+    traits: { possession: false, pressing: true, counter: true, deep: false },
+    formations: ["4-2-3-1-dm", "4-2-3-1-mc", "4-3-3-dm", "4-4-2", "3-4-2-1"],
+    attrs: { def: ["Pac", "Acc", "Ant", "Pos", "Pas"], mid: ["Wor", "Sta", "Dec", "Pas", "OtB"], att: ["Pac", "Acc", "OtB", "Fin", "Dri"] },
+    roles: { favor: ["AF", "PF", "IF", "IW", "B2B", "BWM", "SV", "CWB", "BPD"], avoid: ["L", "TQ", "EG", "RPM", "NCB"] },
+    strengths: ["Castiga a rivales que se estiran", "Mucha ocasión clara con pocos pases", "No exige dominar la posesión"],
+    weaknesses: ["Sufre ante bloques bajos que no dejan espacio", "Exige velocidad y decisión arriba", "Contrapresión + ritmo alto cansa"],
+    when: "Plantillas rápidas y verticales que no necesitan el balón para dominar.",
   },
   {
     id: "gegenpress",
     name: "Gegenpress",
-    description: "Presión asfixiante arriba, línea alta y recuperación inmediata. Exige mucho físico.",
-    mentality: "Positiva / Atacante", mentalityId: "positiva",
-    instructions: ["pases-cortos", "ritmo-alto", "salir-jugando", "contrapresionar", "contraatacar", "distribuir-rapido", "linea-def-alta", "linea-presion-alta", "presionar-mas", "impedir-saque-corto", "fuera-de-juego"],
+    en: "Gegenpress",
+    description: "Presión asfixiante e inmediata tras pérdida, línea alta y pases progresivos cortos. Muy exigente físicamente.",
+    mentality: "Positiva", mentalityId: "positiva",
+    instructions: ["pases-cortos", "ritmo-alto", "salir-jugando", "mas-creatividad", "contrapresionar", "contraatacar", "distribuir-rapido", "linea-def-alta", "linea-presion-alta", "presionar-mas", "impedir-saque-corto", "fuera-de-juego"],
+    traits: { possession: false, pressing: true, counter: true, deep: false },
+    formations: ["4-2-3-1-dm", "4-2-3-1-mc", "4-3-3-dm", "4-3-3-flat", "4-2-4"],
+    attrs: { def: ["Pac", "Acc", "Ant", "Pos", "Agg"], mid: ["Wor", "Sta", "Agg", "Ant", "Pas"], att: ["Wor", "Acc", "Agg", "OtB", "Sta"] },
+    roles: { favor: ["BWM", "PF", "IF", "IW", "CWB", "BPD", "SK"], avoid: ["A", "L", "NCB", "TQ", "EG", "HB"] },
+    strengths: ["Recupera cerca de la portería rival", "Fuerza errores y domina el ritmo", "Genera confianza y momento"],
+    weaknesses: ["Muy exigente física y mentalmente (edad ideal 21-28)", "Si superan la presión, campo abierto atrás", "Hay que gestionar la fatiga toda la temporada"],
+    when: "Plantillas atléticas y agresivas; equipos que quieren imponer el ritmo. Máximo un organizador en el medio.",
   },
   {
-    id: "posesion",
-    name: "Control de posesión",
-    description: "Dominar con el balón, ritmo bajo y paciencia en el último tercio.",
+    id: "tiki-taka",
+    name: "Tiki-taka",
+    en: "Tiki-Taka",
+    description: "Posesión extrema: pases muy cortos a ritmo bajo, sistema estrecho y presión altísima. El balón defiende.",
     mentality: "Positiva", mentalityId: "positiva",
-    instructions: ["pases-cortos", "ritmo-bajo", "amplitud-amplia", "salir-jugando", "trabajar-area", "contrapresionar", "mantener-forma", "distribuir-lento", "linea-def-alta", "linea-presion-alta", "presionar-mas"],
+    instructions: ["pases-cortos", "ritmo-bajo", "amplitud-estrecha", "salir-jugando", "regatear-menos", "trabajar-area", "contrapresionar", "mantener-forma", "distribuir-lento", "gk-saque-corto", "linea-def-alta", "linea-presion-alta", "presionar-mas", "impedir-saque-corto"],
+    traits: { possession: true, pressing: true, counter: false, deep: false },
+    formations: ["4-3-3-dm", "4-3-3-flat", "4-2-3-1-dm", "3-4-3"],
+    attrs: { def: ["Pas", "Fir", "Tec", "Cmp", "Dec"], mid: ["Pas", "Fir", "Tec", "Vis", "Dec"], att: ["Fir", "Tec", "OtB", "Ant", "Agi"] },
+    roles: { favor: ["RPM", "DLP", "AP", "F9", "CF", "BPD", "WB", "CWB"], avoid: ["NCB", "TF", "WTF", "NFB", "L"] },
+    strengths: ["Superioridad numérica con balón", "Agota al rival persiguiendo", "Triángulos y espacios por movimiento"],
+    weaknesses: ["Sufre contra bloques bajos", "Línea altísima expuesta al contra", "Exige jugadores técnicos de élite y mucha familiaridad"],
+    when: "Clubes grandes con plantilla muy técnica y tiempo para asimilar la táctica.",
   },
   {
     id: "tiki-vertical",
     name: "Tiki-taka vertical",
-    description: "Pases cortos pero a ritmo alto buscando siempre el espacio.",
-    mentality: "Positiva", mentalityId: "positiva",
-    instructions: ["pases-cortos", "ritmo-alto", "pasar-espacio", "salir-jugando", "contrapresionar", "contraatacar", "distribuir-rapido", "linea-def-alta", "linea-presion-alta", "presionar-mas"],
+    en: "Vertical Tiki-Taka",
+    description: "Pases cortos pero a ritmo alto, buscando el espacio y el pasillo interior. Cada pase tiene intención.",
+    mentality: "Equilibrada", mentalityId: "equilibrada",
+    instructions: ["pases-cortos", "ritmo-alto", "pasar-espacio", "salir-jugando", "desmarque-dentro-izq", "desmarque-dentro-der", "contrapresionar", "contraatacar", "distribuir-rapido", "linea-def-alta", "linea-presion-alta", "presionar-mas"],
+    traits: { possession: true, pressing: true, counter: true, deep: false },
+    formations: ["4-2-3-1-dm", "4-2-3-1-mc", "4-3-3-dm", "4-1-4-1", "4-1-2-1-2"],
+    attrs: { def: ["Pas", "Tec", "Dec", "Pos", "Acc"], mid: ["Pas", "Tec", "Vis", "Dec", "Acc"], att: ["Acc", "Pac", "Dri", "OtB", "Ant"] },
+    roles: { favor: ["SV", "MEZ", "B2B", "AF", "IF", "IW", "DLP", "AP"], avoid: ["NCB", "TF", "A", "L", "WTF"] },
+    strengths: ["Domina la posesión sin ser previsible", "Terceros hombres y medios espacios", "Ritmo alto que no deja respirar"],
+    weaknesses: ["El ritmo alto pierde balones en zonas peligrosas", "Línea alta vulnerable si superan la presión", "Exige buenos decisores"],
+    when: "Plantillas técnicas y rápidas que quieren dominar sin obsesionarse con la posesión.",
+  },
+  {
+    id: "posesion",
+    name: "Control de posesión",
+    en: "Control Possession",
+    description: "Posesión paciente con bloque medio-alto; controla el ritmo sin la presión extrema del tiki-taka.",
+    mentality: "Equilibrada", mentalityId: "equilibrada",
+    instructions: ["pases-cortos", "ritmo-bajo", "amplitud-amplia", "salir-jugando", "trabajar-area", "contrapresionar", "mantener-forma", "distribuir-lento", "gk-saque-corto", "linea-def-alta", "linea-presion-media", "presionar-mas"],
+    traits: { possession: true, pressing: true, counter: false, deep: false },
+    formations: ["4-2-3-1-dm", "4-2-3-1-mc", "4-3-3-dm", "5-2-3", "3-4-3"],
+    attrs: { def: ["Pas", "Fir", "Tec", "Cmp", "Dec"], mid: ["Pas", "Fir", "Vis", "Dec", "Ant"], att: ["Fir", "Tec", "Cmp", "OtB", "Agi"] },
+    roles: { favor: ["SK", "DLP", "AP", "RPM", "DLF", "CF", "BPD"], avoid: ["NCB", "WTF", "L"] },
+    strengths: ["Controla el ritmo y el movimiento rival", "Sirve a equipos sin técnica de élite", "Sin vulnerabilidades extremas"],
+    weaknesses: ["Deja más espacio a la espalda que el tiki-taka", "Previsible contra bloques bajos", "Necesita familiaridad táctica"],
+    when: "Equipos de media tabla o que equilibran ambición y realidad; al menos un organizador en el medio.",
+  },
+  {
+    id: "contra-fluido",
+    name: "Contraataque fluido",
+    en: "Fluid Counter-Attack",
+    description: "Salida elaborada y bloque medio, con contras rápidos y conducciones cuando hay espacio.",
+    mentality: "Cauta", mentalityId: "cauta",
+    instructions: ["encarar", "pasar-espacio", "reagruparse", "contraatacar", "distribuir-rapido", "linea-presion-media"],
+    traits: { possession: false, pressing: false, counter: true, deep: false },
+    formations: ["3-4-2-1", "3-4-3", "4-3-3-dm", "4-2-3-1-dm", "5-2-3", "5-3-2"],
+    attrs: { def: ["Pas", "Pos", "Dec", "Pac", "Tec"], mid: ["Pas", "Tec", "Dri", "Wor", "Dec"], att: ["Pac", "Acc", "Dri", "Agi", "OtB"] },
+    roles: { favor: ["B2B", "CAR", "MEZ", "BPD", "WB", "IF", "W", "AF"], avoid: ["TQ", "EG", "RPM", "L", "A"] },
+    strengths: ["Equilibra ataque y defensa", "Ocasiones en transición sin perder compacidad", "Flexible ante cualquier rival"],
+    weaknesses: ["Puede parecer reactivo", "Riesgo de desconexión entre fases", "Domina menos que la posesión"],
+    when: "Contra rivales algo mejores, para proteger ventajas con forma, o equipos de media tabla.",
   },
   {
     id: "bloque-bajo",
-    name: "Bloque bajo y contragolpe",
-    description: "Defender compacto cerca del área y salir rápido al espacio.",
-    mentality: "Cauta / Equilibrada", mentalityId: "cauta",
+    name: "Contragolpe directo",
+    en: "Direct Counter-Attack",
+    description: "Bloque bajo y compacto, sin contrapresión, y salida directa al espacio en cuanto se recupera.",
+    mentality: "Cauta", mentalityId: "cauta",
     instructions: ["pases-directos", "ritmo-alto", "pasar-espacio", "reagruparse", "contraatacar", "distribuir-rapido", "linea-def-baja", "linea-presion-baja", "presionar-menos", "marcaje-estricto"],
+    traits: { possession: false, pressing: false, counter: true, deep: true },
+    formations: ["4-4-2", "5-3-2", "4-3-1-2", "3-4-2-1", "4-4-1-1"],
+    attrs: { def: ["Pos", "Cnt", "Mar", "Hea", "Str"], mid: ["Wor", "Pos", "Tck", "Pas", "Dec"], att: ["Pac", "Acc", "OtB", "Fin", "Dri"] },
+    roles: { favor: ["NCB", "CD", "GK", "BWM", "SV", "DLF", "AF", "P", "IW", "TF"], avoid: ["L", "RPM", "TQ", "EG", "AP", "SK", "CWB"] },
+    strengths: ["Organización y compacidad", "Explota el espacio a la espalda de líneas altas", "Exige poca técnica; buena para plantillas inferiores"],
+    weaknesses: ["Renuncia a la iniciativa", "Sufre contra equipos pacientes", "Depende de acertar con pocas ocasiones y del balón parado"],
+    when: "Plantillas inferiores, recién ascendidos, últimos minutos con ventaja o contra dominadores de la posesión.",
   },
   {
-    id: "directo",
-    name: "Juego directo por bandas",
-    description: "Balón largo al referencia, centros tempranos y segundas jugadas.",
+    id: "route-one",
+    name: "Balón largo (Route one)",
+    en: "Route One",
+    description: "Saltar el medio campo con balones largos al referencia y centros tempranos; segundas jugadas y balón parado.",
     mentality: "Equilibrada", mentalityId: "equilibrada",
-    instructions: ["pases-directos", "amplitud-amplia", "centros-tempranos", "reagruparse", "mantener-forma", "linea-def-baja", "linea-presion-media", "entradas-duras"],
+    instructions: ["pases-directos", "ritmo-alto", "amplitud-amplia", "centros-tempranos", "gk-saque-largo", "gk-al-referencia", "reagruparse", "mantener-forma", "linea-def-baja", "linea-presion-media"],
+    traits: { possession: false, pressing: false, counter: false, deep: true },
+    formations: ["5-3-2", "4-4-2", "4-4-1-1", "4-1-4-1", "4-2-4"],
+    attrs: { def: ["Hea", "Str", "Pos", "Jum", "Pas"], mid: ["Wor", "Tea", "Pos", "Sta", "Hea"], att: ["Hea", "Jum", "Str", "Fin", "Bra"] },
+    roles: { favor: ["TF", "WTF", "PF", "DW", "WM", "NCB", "FB", "GK"], avoid: ["DLP", "AP", "RPM", "EG", "TQ", "F9", "L", "REG", "IW", "IF"] },
+    strengths: ["Mínima exigencia técnica", "Salta medios campos organizados y presiones altas", "Aprovecha ventaja física y aérea"],
+    weaknesses: ["Previsible y con poca creatividad", "Sufre ante defensas compactas", "Depende del balón parado"],
+    when: "Equipos técnicamente inferiores, recién ascendidos, contra presiones altas o en los últimos minutos.",
+  },
+  {
+    id: "bandas",
+    name: "Juego por bandas",
+    en: "Wing Play",
+    description: "Estirar al rival por fuera con laterales que doblan y extremos que centran a un delantero alto.",
+    mentality: "Equilibrada", mentalityId: "equilibrada",
+    instructions: ["pases-directos", "ritmo-alto", "amplitud-amplia", "pasar-espacio", "centros-tempranos", "desmarque-fuera-izq", "desmarque-fuera-der", "gk-a-bandas", "reagruparse", "contraatacar", "linea-presion-media"],
+    traits: { possession: false, pressing: false, counter: true, deep: false },
+    formations: ["4-4-2", "5-3-2", "4-3-3-flat", "4-2-3-1-mc", "4-2-4"],
+    attrs: { def: ["Cro", "Pac", "Sta", "Wor", "Pos"], mid: ["Cro", "Dri", "Pac", "OtB", "Wor"], att: ["Hea", "Jum", "Str", "OtB", "Fin"] },
+    roles: { favor: ["TF", "CF", "AF", "DLF", "PF", "W", "WB", "CWB", "FB", "MEZ", "WM"], avoid: ["IW", "IF", "WP", "NFB", "IWB", "NCB", "F9"] },
+    strengths: ["Estira la defensa horizontalmente", "Usa la velocidad por fuera", "Eficaz contra defensas cerradas por dentro"],
+    weaknesses: ["Previsible (todo por fuera)", "Depende de la calidad de los centros", "Poca creatividad central"],
+    when: "Delantero alto y extremos rápidos que centran bien; contra defensas estrechas.",
+  },
+  {
+    id: "autobus",
+    name: "Autobús (Park the bus)",
+    en: "Park the Bus",
+    description: "Defensa extrema: bloque bajo, compacto y sin prisa. Solo para situaciones concretas, no toda la temporada.",
+    mentality: "Defensiva", mentalityId: "defensiva",
+    instructions: ["ritmo-bajo", "perder-tiempo", "reagruparse", "mantener-forma", "linea-def-baja", "linea-presion-baja", "presionar-menos", "anchura-def-estrecha", "marcaje-estricto"],
+    traits: { possession: false, pressing: false, counter: false, deep: true },
+    formations: ["4-1-4-1", "5-3-2", "4-4-1-1", "4-4-2"],
+    attrs: { def: ["Mar", "Tck", "Pos", "Cnt", "Hea"], mid: ["Wor", "Pos", "Tck", "Tea", "Sta"], att: ["Wor", "Str", "Hea", "Pac", "Bra"] },
+    roles: { favor: ["CD", "FB", "DW", "DM", "A", "HB", "DLP", "PF", "P", "DLF"], avoid: ["TQ", "EG", "RPM", "CWB", "AP", "SK", "L", "MEZ"] },
+    strengths: ["Organización defensiva máxima", "Rompe el ritmo rival", "Protege resultados al final"],
+    weaknesses: ["Totalmente reactivo", "Sufre contra equipos pacientes", "Feo y desmoralizante a la larga"],
+    when: "Proteger un resultado en el tramo final, permanencia o rivales muy superiores. Deberes de defender atrás y máximo un organizador.",
+  },
+  {
+    id: "catenaccio",
+    name: "Catenaccio",
+    en: "Catenaccio",
+    description: "Superioridad numérica atrás con líbero, defensa zonal disciplinada y contras directos con carrileros que suben.",
+    mentality: "Defensiva", mentalityId: "defensiva",
+    instructions: ["pases-directos", "mas-disciplina", "reagruparse", "contraatacar", "distribuir-rapido", "linea-def-baja", "linea-presion-baja", "presionar-menos", "marcaje-estricto"],
+    traits: { possession: false, pressing: false, counter: true, deep: true },
+    formations: ["5-3-2", "3-4-2-1", "3-4-3", "4-4-2", "4-3-1-2"],
+    attrs: { def: ["Pos", "Mar", "Ant", "Cnt", "Dec"], mid: ["Wor", "Pos", "Pas", "Tck", "Tea"], att: ["Pac", "OtB", "Fin", "Str", "Ant"] },
+    roles: { favor: ["L", "WCB", "NCB", "CD", "WB", "CWB", "REG", "BWM", "PF", "TF", "AF"], avoid: ["TQ", "EG", "AP", "HB", "SK", "RPM"] },
+    strengths: ["El líbero tapa el espacio entre defensa y portero", "Frustra al rival con defensa disciplinada", "Contras con espacio por delante"],
+    weaknesses: ["Necesita un líbero de verdad", "Muchos empates y fútbol aburrido", "Poca ambición ofensiva"],
+    when: "Buscar solidez ante dominadores de la posesión, ligas de muchos empates o divisiones bajas.",
   },
 ];
 
+/** Rasgos de un estilo; sin estilo (instrucciones a medida) todo es false. */
+export function styleTraits(styleId: string | null | undefined): StylePreset["traits"] {
+  return STYLE_BY_ID[styleId ?? ""]?.traits ?? { possession: false, pressing: false, counter: false, deep: false };
+}
+
 export const STYLE_BY_ID: Record<string, StylePreset> = Object.fromEntries(STYLE_PRESETS.map((s) => [s.id, s]));
+// Id antiguo de "Juego directo por bandas" en tácticas ya guardadas.
+STYLE_BY_ID.directo = STYLE_BY_ID.bandas;
 
 // ---------------------------------------------------------------------------
 // Encaje con el XI

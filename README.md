@@ -60,7 +60,7 @@ Si no quieres habilitar Corepack, antepón `corepack` a cada comando
 
 Las reglas de roles, rasgos, instrucciones y atributos siguen las guías de
 [Passion4FM](https://www.passion4fm.com/) (rasgos, atributos, instrucciones de
-jugador, parejas de roles), la guía "Roles and Combinations" de Magicomonta
+jugador, parejas de roles, estilos de juego y presets), la guía "Roles and Combinations" de Magicomonta
 (rol × estilo, bandas con uno o dos jugadores, rombo) y una guía comunitaria de
 instrucciones de equipo y mentalidad. El entrenamiento sigue la guía de
 jonasmorais (FM Scout) y el megapack de Passion4FM (carga semanal, rotación,

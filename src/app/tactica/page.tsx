@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FORMATIONS } from "@/lib/fm/formations";
 import { INSTRUCTIONS, INSTRUCTION_BY_ID, MENTALITIES, MENTALITY_BY_ID, PHASE_LABEL, STYLE_BY_ID, STYLE_PRESETS, fitTone, instructionFit, type InstructionPhase } from "@/lib/fm/instructions";
 import { tacticAdvice } from "@/lib/fm/advice";
+import { rankStyles, UNIT_SHORT } from "@/lib/fm/styles";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
 import { buildLineup, newTactic, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
 import { strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
@@ -47,6 +48,9 @@ export default function TacticPage() {
   const lineup: LineupResult | null = useMemo(() => (tactic && players.length ? buildLineup(tactic, players) : null), [tactic, players]);
   const warnings = useMemo(() => (tactic ? tacticWarnings(tactic) : []), [tactic]);
   const advice = useMemo(() => (tactic && lineup ? tacticAdvice(tactic, lineup) : []), [tactic, lineup]);
+  const styleRank = useMemo(() => (lineup ? rankStyles(lineup) : []), [lineup]);
+  const currentStyle = tactic?.styleId ? STYLE_BY_ID[tactic.styleId] : null;
+  const currentFit = currentStyle ? styleRank.find((f) => f.style.id === currentStyle.id) ?? null : null;
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
   const piBySlot = useMemo(() => {
     const m = new Map<string, PISuggestion[]>();
@@ -149,7 +153,7 @@ export default function TacticPage() {
         </button>
         {lineup && (
           <div className="ml-auto text-xs text-muted">
-            Media del XI: <ScoreBadge score={lineup.average} /> · {tactic.styleId ? STYLE_BY_ID[tactic.styleId].description : "instrucciones personalizadas"}
+            Media del XI: <ScoreBadge score={lineup.average} /> · {currentStyle ? currentStyle.description : "instrucciones personalizadas"}
           </div>
         )}
       </div>
@@ -229,6 +233,54 @@ export default function TacticPage() {
               <p key={i} className={`text-xs ${w.level === "warn" ? "text-attr-mid" : "text-muted"}`}>{w.level === "warn" ? "⚠ " : "ℹ "}{w.text}</p>
             ))}
           </section>
+
+          {lineup && (
+            <section className="bg-surface border border-border rounded-lg p-3 space-y-2">
+              <h2 className="font-semibold">Estilo de juego</h2>
+              {currentStyle && currentFit && (
+                <div className="text-xs space-y-1">
+                  <div><b>{currentStyle.name}</b> <span className="text-muted">({currentStyle.en}) · mentalidad {currentStyle.mentality}</span></div>
+                  <p className="text-muted">{currentStyle.when}</p>
+                  <div className="flex flex-wrap gap-x-3">
+                    {(["def", "mid", "att"] as const).map((u) => (
+                      <span key={u}>{UNIT_SHORT[u]} <b className={currentFit.units[u] == null ? "text-muted" : currentFit.units[u]! >= 14.5 ? "text-attr-elite" : currentFit.units[u]! >= 13 ? "text-attr-good" : currentFit.units[u]! >= 11.5 ? "text-attr-mid" : "text-attr-low"}>{currentFit.units[u]?.toFixed(1) ?? "–"}</b></span>
+                    ))}
+                    <span className="text-muted" title={currentStyle.attrs.def.join(" ") + " / " + currentStyle.attrs.mid.join(" ") + " / " + currentStyle.attrs.att.join(" ")}>atributos clave por unidad</span>
+                  </div>
+                  {!currentFit.formationOk && <p className="text-attr-mid">⚠ {lineup.formation.name} no está entre las formaciones típicas del estilo: {currentStyle.formations.map((f) => FORMATIONS.find((x) => x.id === f)?.name ?? f).join(", ")}.</p>}
+                  {currentFit.avoided.map((a, i) => <p key={i} className="text-attr-mid">⚠ {a.role} ({a.player}) le sienta mal a este estilo.</p>)}
+                  <details>
+                    <summary className="cursor-pointer text-muted">Fortalezas, debilidades y roles</summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {currentStyle.strengths.map((t, i) => <li key={"s" + i} className="text-attr-good">+ {t}</li>)}
+                      {currentStyle.weaknesses.map((t, i) => <li key={"w" + i} className="text-attr-low">− {t}</li>)}
+                    </ul>
+                    <p className="mt-1 text-muted">Pide: {currentStyle.roles.favor.join(", ")}. Evita: {currentStyle.roles.avoid.join(", ")}.</p>
+                  </details>
+                </div>
+              )}
+              <details>
+                <summary className="cursor-pointer text-xs text-muted">¿Qué estilo encaja mejor con este XI?</summary>
+                <table className="tbl w-full mt-1">
+                  <thead><tr><th>Estilo</th><th className="num">Def</th><th className="num">Med</th><th className="num">Ata</th><th className="num">Media</th></tr></thead>
+                  <tbody>
+                    {styleRank.map((f) => (
+                      <tr key={f.style.id} className={f.style.id === tactic.styleId ? "font-medium" : ""}>
+                        <td>
+                          <button className="text-left hover:underline" title={`${f.style.description}\n${f.style.when}`} onClick={() => applyStyle(f.style.id)}>{f.style.name}</button>
+                          {f.avoided.length > 0 && <span className="text-attr-mid" title={f.avoided.map((a) => `${a.role}: ${a.player}`).join("\n")}> ⚠{f.avoided.length}</span>}
+                          {!f.formationOk && <span className="text-muted" title="formación no típica del estilo"> ▫</span>}
+                        </td>
+                        {(["def", "mid", "att"] as const).map((u) => <td key={u} className="num text-xs">{f.units[u]?.toFixed(1) ?? "–"}</td>)}
+                        <td className="num text-xs font-medium">{f.mean?.toFixed(1) ?? "–"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[10px] text-muted mt-1">Media 1-20 de los atributos clave del estilo en los titulares de cada unidad (con el XI de esta formación). ⚠ roles del XI que el estilo desaconseja; ▫ formación no típica. Clic para aplicar el estilo.</p>
+              </details>
+            </section>
+          )}
 
           {lineup && (
             <section className="bg-surface border border-border rounded-lg p-3">

@@ -7,6 +7,7 @@ import { FORMATION_BY_ID, type Formation, type FormationSlot } from "./formation
 import { ROLE_BY_ID, type RoleDef } from "./roles";
 import { DEFAULT_SCORING, scoreRole, type RoleScore, type ScoringConfig } from "./scoring";
 import type { Player, PositionSlot } from "./types";
+import { styleTraits } from "./instructions";
 
 // ---------------------------------------------------------------------------
 // Modelo
@@ -370,10 +371,11 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
 
   // ---- Rol × estilo (guía de Magicomonta) y banda con uno o dos jugadores
   const style = tactic.styleId ?? "";
-  const possession = style === "posesion" || style === "tiki-vertical";
-  const pressing = ["gegenpress", "tiki-vertical", "posesion", "transiciones"].includes(style);
-  const waiting = style === "bloque-bajo" || style === "directo";
-  const transition = ["transiciones", "bloque-bajo", "directo"].includes(style);
+  const tr = styleTraits(style);
+  const possession = tr.possession;
+  const pressing = tr.pressing;
+  const waiting = tr.deep;
+  const transition = tr.counter && !tr.possession;
   if (style) {
     if (possession && codes.includes("NCB")) out.push({ level: "info", text: "Central sin florituras en un estilo de posesión: despeja en vez de jugar; mejor Defensa central o con salida de balón." });
     if (transition && codes.includes("L")) out.push({ level: "info", text: "Líbero en un estilo de transiciones: sube y deja la defensa corta justo cuando más se contraataca. Es un rol de posesión." });
