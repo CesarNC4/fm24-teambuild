@@ -49,7 +49,10 @@ Si no quieres habilitar Corepack, antepón `corepack` a cada comando
 - `src/lib/fm/roles.ts` – roles/deberes con atributos clave y preferibles
 - `src/lib/fm/scoring.ts` – puntuación 0-100 por rol
 - `src/lib/store.ts` – estado persistente (zustand + IndexedDB)
-- `src/app/*` – páginas (Importar, Plantilla, Roles…)
+- `src/lib/fm/formations.ts`, `tactics.ts`, `instructions.ts` – formaciones, mejor XI (húngaro), avisos e instrucciones con encaje
+- `src/lib/fm/traits.ts` – catálogo de rasgos, compatibilidad por rol y sugerencias
+- `src/lib/fm/training.ts` – foco individual, calendario semanal y tutorías
+- `src/app/*` – páginas (Importar, Plantilla, Roles, Táctica, Rasgos, Entrenamiento)
 
 `refs/` (ignorado por git) contiene repositorios de la comunidad usados como
 referencia: FM24-Player-Analyzer (GPL-3), pyscoutfm (MIT), fm_player_ranking.

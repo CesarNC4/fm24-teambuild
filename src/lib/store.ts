@@ -31,6 +31,8 @@ interface AppState {
   activeTacticId: string | null;
   /** uid → ids de rasgos que tiene el jugador (entrada manual). */
   playerTraits: Record<string, string[]>;
+  /** Opciones del calendario semanal de entrenamiento. */
+  trainingWeek: { matchDays: number[]; preseason: boolean };
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
@@ -42,6 +44,7 @@ interface AppState {
   removeTactic: (id: string) => void;
   setActiveTactic: (id: string | null) => void;
   setPlayerTraits: (uid: string, traitIds: string[]) => void;
+  setTrainingWeek: (w: { matchDays: number[]; preseason: boolean }) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -55,6 +58,7 @@ export const useAppStore = create<AppState>()(
       tactics: [],
       activeTacticId: null,
       playerTraits: {},
+      trainingWeek: { matchDays: [5], preseason: false },
 
       setPlayers: (source, players, meta) =>
         set((s) => ({
@@ -82,6 +86,7 @@ export const useAppStore = create<AppState>()(
         }),
       setActiveTactic: (activeTacticId) => set({ activeTacticId }),
       setPlayerTraits: (uid, traitIds) => set((s) => ({ playerTraits: { ...s.playerTraits, [uid]: traitIds } })),
+      setTrainingWeek: (trainingWeek) => set({ trainingWeek }),
     }),
     {
       name: "fm24-assistant",
@@ -94,6 +99,7 @@ export const useAppStore = create<AppState>()(
         tactics: s.tactics,
         activeTacticId: s.activeTacticId,
         playerTraits: s.playerTraits,
+        trainingWeek: s.trainingWeek,
       }),
       onRehydrateStorage: () => (state) => {
         state?.markHydrated();
