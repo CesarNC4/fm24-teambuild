@@ -27,6 +27,25 @@ export interface Tactic {
   mentality?: string;
   /** Instrucciones activadas por el usuario (ids). */
   instructions: string[];
+  /**
+   * Jugadores con los que se arma el XI: "plantilla" (primer equipo, por
+   * defecto), "segundo" (primer equipo sin el XI titular), "todos" (primer
+   * equipo + filiales) o el id de un filial.
+   */
+  pool?: string;
+}
+
+/** Jugadores disponibles para una táctica según su `pool`. */
+export function poolPlayers(tactic: Tactic, players: Record<string, Player[]>, filialIds: string[]): { players: Player[]; exclude?: Set<string> } {
+  const first = players.plantilla ?? [];
+  const pool = tactic.pool ?? "plantilla";
+  if (pool === "segundo") {
+    const xi = buildLineup({ ...tactic, pool: "plantilla", locks: {} }, first);
+    return { players: first, exclude: new Set(xi.slots.filter((s) => s.starter).map((s) => s.starter!.player.uid)) };
+  }
+  if (pool === "todos") return { players: [...first, ...filialIds.flatMap((id) => players[id] ?? [])] };
+  if (pool !== "plantilla" && players[pool]) return { players: players[pool] };
+  return { players: first };
 }
 
 export function newTactic(formationId: string, name = "Nueva táctica"): Tactic {

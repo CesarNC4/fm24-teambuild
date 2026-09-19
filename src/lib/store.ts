@@ -40,7 +40,7 @@ interface AppState {
   /** uid → ids de rasgos que tiene el jugador (entrada manual). */
   playerTraits: Record<string, string[]>;
   /** Opciones del calendario semanal de entrenamiento. */
-  trainingWeek: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number };
+  trainingWeek: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number; youthTheme?: string };
   /** Presupuestos de fichajes: traspaso total y sueldo máximo por jugador (mismas unidades que la exportación). */
   scoutingBudget: { transfer: number | null; wage: number | null };
 
@@ -57,7 +57,7 @@ interface AppState {
   removeTactic: (id: string) => void;
   setActiveTactic: (id: string | null) => void;
   setPlayerTraits: (uid: string, traitIds: string[]) => void;
-  setTrainingWeek: (w: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number }) => void;
+  setTrainingWeek: (w: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number; youthTheme?: string }) => void;
   setScoutingBudget: (b: { transfer: number | null; wage: number | null }) => void;
 }
 

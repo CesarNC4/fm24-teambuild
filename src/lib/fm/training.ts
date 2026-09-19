@@ -308,6 +308,72 @@ export function buildWeek(opts: WeekOptions): DayPlan[] {
 }
 
 // ===========================================================================
+// Semana de los filiales (guías de jonasmorais y del megapack de Passion4FM)
+// ===========================================================================
+
+/**
+ * Temas de la semana juvenil. Passion4FM (modelo TIPS del Ajax) rota
+ * 3 meses de general → 3 de técnica → 3 de inteligencia, con velocidad solo
+ * en semanas sin partido por el riesgo de lesión. jonasmorais: en el Sub-18
+ * cada día es de una categoría (no hacen falta previas ni análisis); el
+ * Sub-21 mezcla días temáticos con preparación del partido.
+ */
+export type YouthTheme = "general" | "tecnica" | "inteligencia" | "velocidad" | "fisico" | "equipo";
+export const YOUTH_THEME_LABEL: Record<YouthTheme, string> = {
+  general: "General (3 meses al empezar)",
+  tecnica: "Técnica (3 meses)",
+  inteligencia: "Inteligencia / visión (3 meses)",
+  velocidad: "Velocidad (solo semanas sin partido)",
+  fisico: "Físico (fuerza y resistencia)",
+  equipo: "Cohesión (canteranos nuevos)",
+};
+
+/** Sesiones de cada tema, en orden de prioridad; se reparten dos por día. */
+const YOUTH_SESSIONS: Record<YouthTheme, string[]> = {
+  general: ["ball-retention", "att-movement", "def-shape", "quickness", "ball-distribution", "endurance", "chance-creation", "def-engaged"],
+  tecnica: ["ball-distribution", "ball-retention", "chance-creation", "chance-conversion", "att-patient", "att-wings", "goalkeeping", "sp-attacking"],
+  inteligencia: ["tactical", "att-shadow", "def-shadow", "def-shape", "att-movement", "teamwork", "def-front", "match-practice"],
+  velocidad: ["quickness", "att-movement", "transition-press", "quickness", "def-engaged", "endurance", "att-direct", "quickness"],
+  fisico: ["resistance", "endurance", "quickness", "physical", "resistance", "def-shape", "endurance", "att-movement"],
+  equipo: ["team-bonding", "teamwork", "match-practice", "att-movement", "def-shape", "team-bonding", "ball-retention", "teamwork"],
+};
+
+export interface YouthWeekOptions {
+  matchDays: number[];
+  theme: YouthTheme;
+  /** true = Sub-21/equipo B (prepara partidos); false = Sub-18 (solo desarrollo). */
+  competitive: boolean;
+}
+
+export function buildYouthWeek(opts: YouthWeekOptions): DayPlan[] {
+  const list = YOUTH_SESSIONS[opts.theme];
+  const matchSet = new Set(opts.matchDays);
+  const days: DayPlan[] = Array.from({ length: 7 }, (_, d) => ({ day: d, isMatch: matchSet.has(d), sessions: [null, null, null] }));
+  const prevMatch = (d: number) => matchSet.has((d + 6) % 7);
+  const nextMatch = (d: number) => matchSet.has((d + 1) % 7);
+  let i = 0;
+  const next = () => list[i++ % list.length];
+  for (const day of days) {
+    if (day.isMatch) { day.sessions = ["match", null, null]; continue; }
+    if (prevMatch(day.day)) { day.sessions = ["recovery", opts.competitive ? "match-review" : next(), null]; continue; }
+    if (day.day === 6) { day.sessions = ["rest", null, null]; continue; }
+    if (nextMatch(day.day) && opts.competitive) { day.sessions = ["match-preview", next(), null]; continue; }
+    // Día temático: dos sesiones del tema y una tercera ligera en días alternos
+    day.sessions = [next(), next(), day.day % 2 === 0 ? "rest" : opts.theme === "velocidad" || opts.theme === "fisico" ? "recovery" : "teamwork"];
+  }
+  return days;
+}
+
+/** Avisos sobre la configuración elegida. */
+export function youthWeekWarnings(opts: YouthWeekOptions): string[] {
+  const out: string[] = [];
+  if (opts.theme === "velocidad" && opts.matchDays.length > 0) out.push("La semana de velocidad va en semanas sin partido: es la de más lesiones.");
+  if (opts.matchDays.length >= 2) out.push("Dos partidos: quita la tercera sesión de los días temáticos si aparecen fatigados.");
+  if (!opts.competitive) out.push("Sub-18: sin previa ni análisis; con 15 minutos ya reciben nota, así que rota a todos.");
+  return out;
+}
+
+// ===========================================================================
 // Charlas: elogios y críticas mensuales por rendimiento (guía de jonasmorais)
 // ===========================================================================
 
@@ -374,17 +440,19 @@ export interface MentoringGroup {
  * ≤23 años con personalidad no buena o determinación baja. Los ambiciosos se
  * marcan porque contagian lealtad baja además de ambición.
  */
-export function suggestMentoring(players: Player[]): MentoringGroup[] {
+export function suggestMentoring(players: Player[], opts: { youth?: boolean } = {}): MentoringGroup[] {
   const units: Unit[] = ["portero", "defensa", "medio", "ataque"];
+  // En un filial no hay veteranos: valen los mayores del grupo con buena personalidad.
+  const minAge = opts.youth ? 19 : 24;
   return units
     .map((unit) => {
       const pool = players.filter((p) => unitOf(p) === unit);
       const mentors = pool
-        .filter((p) => (p.age ?? 0) >= 24 && personalityTierLevel(p.personality) >= 5 && ((p.attrs.Det?.value ?? 0) >= 14 || (p.attrs.Ldr?.value ?? 0) >= 14))
+        .filter((p) => (p.age ?? 0) >= minAge && personalityTierLevel(p.personality) >= 5 && ((p.attrs.Det?.value ?? 0) >= (opts.youth ? 13 : 14) || (p.attrs.Ldr?.value ?? 0) >= (opts.youth ? 10 : 14)))
         .sort((a, b) => personalityTierLevel(b.personality) - personalityTierLevel(a.personality) || (b.attrs.Ldr?.value ?? 0) + (b.attrs.Det?.value ?? 0) - (a.attrs.Ldr?.value ?? 0) - (a.attrs.Det?.value ?? 0))
         .slice(0, 3);
       const mentees = pool
-        .filter((p) => (p.age ?? 99) <= 23 && (personalityTierLevel(p.personality) < 5 || (p.attrs.Det?.value ?? 0) < 12))
+        .filter((p) => (p.age ?? 99) <= 23 && !mentors.includes(p) && (personalityTierLevel(p.personality) < 5 || (p.attrs.Det?.value ?? 0) < 12))
         .sort((a, b) => personalityTierLevel(a.personality) - personalityTierLevel(b.personality) || (a.attrs.Det?.value ?? 0) - (b.attrs.Det?.value ?? 0));
       const notes: string[] = [];
       for (const m of pool.filter((p) => (p.age ?? 0) >= 24 && /ambicios|ambitious/i.test(p.personality ?? "") && !mentors.includes(p))) {

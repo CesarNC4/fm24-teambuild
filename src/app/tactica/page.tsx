@@ -7,7 +7,7 @@ import { INSTRUCTIONS, INSTRUCTION_BY_ID, MENTALITIES, MENTALITY_BY_ID, PHASE_LA
 import { tacticAdvice } from "@/lib/fm/advice";
 import { rankStyles, UNIT_SHORT } from "@/lib/fm/styles";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
-import { buildLineup, newTactic, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
+import { buildLineup, newTactic, poolPlayers, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
 import { strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -21,7 +21,10 @@ const TONE_CLASS = {
 } as const;
 
 export default function TacticPage() {
-  const players = useAppStore((s) => s.players.plantilla);
+  const allPlayers = useAppStore((s) => s.players);
+  const squads = useAppStore((s) => s.squads);
+  const players = allPlayers.plantilla;
+  const filiales = useMemo(() => squads.filter((q) => q.kind === "filial"), [squads]);
   const hydrated = useAppStore((s) => s.hydrated);
   const tactics = useAppStore((s) => s.tactics);
   const activeId = useAppStore((s) => s.activeTacticId);
@@ -45,7 +48,11 @@ export default function TacticPage() {
 
   const tactic = tactics.find((t) => t.id === activeId) ?? tactics[0] ?? null;
 
-  const lineup: LineupResult | null = useMemo(() => (tactic && players.length ? buildLineup(tactic, players) : null), [tactic, players]);
+  const lineup: LineupResult | null = useMemo(() => {
+    if (!tactic || !players.length) return null;
+    const pool = poolPlayers(tactic, allPlayers, filiales.map((q) => q.id));
+    return pool.players.length ? buildLineup(tactic, pool.players, { exclude: pool.exclude }) : null;
+  }, [tactic, players.length, allPlayers, filiales]);
   const warnings = useMemo(() => (tactic ? tacticWarnings(tactic) : []), [tactic]);
   const advice = useMemo(() => (tactic && lineup ? tacticAdvice(tactic, lineup) : []), [tactic, lineup]);
   const styleRank = useMemo(() => (lineup ? rankStyles(lineup) : []), [lineup]);
@@ -130,6 +137,12 @@ export default function TacticPage() {
           value={tactic.name}
           onChange={(e) => updateTactic(tactic.id, { name: e.target.value })}
         />
+        <select className="bg-surface border border-border rounded px-2 py-1" value={tactic.pool ?? "plantilla"} onChange={(e) => updateTactic(tactic.id, { pool: e.target.value })} title="Con qué jugadores se arma el XI">
+          <option value="plantilla">Primer equipo</option>
+          <option value="segundo">Segundo equipo (sin el XI titular)</option>
+          {filiales.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
+          {filiales.length > 0 && <option value="todos">Titulares + filiales (todos)</option>}
+        </select>
         <select className="bg-surface border border-border rounded px-2 py-1" value={tactic.formationId} onChange={(e) => changeFormation(e.target.value)}>
           {FORMATIONS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
