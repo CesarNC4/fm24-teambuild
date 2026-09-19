@@ -1,4 +1,5 @@
 allowBuilds:
+  esbuild: set this to true or false
   unrs-resolver: set this to true or false
 
 # Configuración de pnpm (desde v10 vive aquí, no en .npmrc).

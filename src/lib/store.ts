@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import type { ImportSource, Player } from "./fm/types";
+import type { Tactic } from "./fm/tactics";
 
 /** Almacenamiento en IndexedDB (mucha más capacidad que localStorage). */
 const idbStorage: StateStorage = {
@@ -26,12 +27,18 @@ interface AppState {
   /** Nombre del club del usuario (se deduce de la plantilla). */
   clubName: string | null;
   hydrated: boolean;
+  tactics: Tactic[];
+  activeTacticId: string | null;
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
   setHeaderOverrides: (o: Record<string, string | null>) => void;
   setClubName: (name: string | null) => void;
   markHydrated: () => void;
+  addTactic: (t: Tactic) => void;
+  updateTactic: (id: string, patch: Partial<Tactic> | ((t: Tactic) => Tactic)) => void;
+  removeTactic: (id: string) => void;
+  setActiveTactic: (id: string | null) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -42,6 +49,8 @@ export const useAppStore = create<AppState>()(
       headerOverrides: {},
       clubName: null,
       hydrated: false,
+      tactics: [],
+      activeTacticId: null,
 
       setPlayers: (source, players, meta) =>
         set((s) => ({
@@ -57,6 +66,17 @@ export const useAppStore = create<AppState>()(
       setHeaderOverrides: (headerOverrides) => set({ headerOverrides }),
       setClubName: (clubName) => set({ clubName }),
       markHydrated: () => set({ hydrated: true }),
+      addTactic: (t) => set((s) => ({ tactics: [...s.tactics, t], activeTacticId: t.id })),
+      updateTactic: (id, patch) =>
+        set((s) => ({
+          tactics: s.tactics.map((t) => (t.id !== id ? t : typeof patch === "function" ? patch(t) : { ...t, ...patch })),
+        })),
+      removeTactic: (id) =>
+        set((s) => {
+          const tactics = s.tactics.filter((t) => t.id !== id);
+          return { tactics, activeTacticId: s.activeTacticId === id ? (tactics[0]?.id ?? null) : s.activeTacticId };
+        }),
+      setActiveTactic: (activeTacticId) => set({ activeTacticId }),
     }),
     {
       name: "fm24-assistant",
@@ -66,6 +86,8 @@ export const useAppStore = create<AppState>()(
         imports: s.imports,
         headerOverrides: s.headerOverrides,
         clubName: s.clubName,
+        tactics: s.tactics,
+        activeTacticId: s.activeTacticId,
       }),
       onRehydrateStorage: () => (state) => {
         state?.markHydrated();
