@@ -102,7 +102,8 @@ export default function TraitsPage() {
         <h1 className="text-2xl font-semibold">Rasgos</h1>
         <p className="text-xs text-muted">
           El juego no exporta los rasgos: introdúcelos una vez por jugador (quedan guardados). Las recomendaciones usan el rol que tiene en la táctica activa
-          {tactic ? ` (${tactic.name})` : ""}, o su mejor rol si no es titular.
+          {tactic ? ` (${tactic.name})` : ""}, o su mejor rol si no es titular. Un rasgo no se aprende lesionado; desaprender uno contrario puede llevar una temporada;
+          en ojeados solo se ven con conocimiento &gt;80 %. Los marcados como &quot;solo tutoría&quot; no se enseñan en entrenamiento.
         </p>
       </div>
 
@@ -184,7 +185,7 @@ export default function TraitsPage() {
                           className="w-full text-left text-xs px-2 py-1 hover:bg-surface-2 flex justify-between gap-2"
                           onClick={() => { addTrait(sel.p.uid, t.id); setQuery(""); }}
                         >
-                          <span>{t.es} <span className="text-muted">· {t.en}</span></span>
+                          <span>{t.es} <span className="text-muted">· {t.en}{t.mentoringOnly ? " · solo tutoría" : ""}</span></span>
                           {conflict && <span className="text-attr-low">incompatible con uno actual</span>}
                         </button>
                       );

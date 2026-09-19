@@ -29,13 +29,16 @@ export interface ScoringConfig {
 export const DEFAULT_SCORING: ScoringConfig = {
   keyWeight: 3,
   prefWeight: 1.5,
+  // Velocidad/aceleración dominan el motor; Anticipación, Decisiones, Serenidad,
+  // Concentración y Determinación importan en todas las posiciones (Passion4FM).
   meta: {
     Pac: 1.5, Acc: 1.5,
-    Agi: 0.6, Bal: 0.6, Jum: 0.6, Ant: 0.6, Cnt: 0.6, Str: 0.4, Sta: 0.4, Wor: 0.4,
-    Dri: 0.3, Fin: 0.3, Pas: 0.3, Det: 0.3,
+    Ant: 0.8, Dec: 0.8, Cmp: 0.5, Cnt: 0.6, Det: 0.4,
+    Agi: 0.6, Bal: 0.6, Jum: 0.6, Str: 0.4, Sta: 0.4, Wor: 0.4, Tea: 0.2,
+    Dri: 0.3, Fin: 0.3, Pas: 0.3,
   },
   metaGk: {
-    Agi: 1.2, Ref: 1.0, Aer: 0.6, Acc: 0.4, Pac: 0.4, Ant: 0.4, Cnt: 0.4, Jum: 0.4,
+    Agi: 1.2, Ref: 1.0, Aer: 0.6, Acc: 0.4, Pac: 0.4, Ant: 0.6, Dec: 0.5, Cnt: 0.5, Cmp: 0.4, Jum: 0.4, Det: 0.3,
   },
 };
 

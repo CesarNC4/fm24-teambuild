@@ -50,8 +50,15 @@ export interface FocusRecommendation {
   note: string | null;
 }
 
+/**
+ * Atributos "absolutos": apenas cambian con entrenamiento (solo con la edad o
+ * por tutoría), así que no tiene sentido enfocarlos.
+ */
+export const UNTRAINABLE: AttrKey[] = ["Det", "Wor", "Nat", "Ldr"];
+
 /** Objetivo por atributo según importancia para el rol. */
 function targetFor(role: RoleDef, key: AttrKey): { target: number; weight: number } | null {
+  if (UNTRAINABLE.includes(key)) return null;
   if (role.key.includes(key)) return { target: 15, weight: 2 };
   if (role.pref.includes(key)) return { target: 13, weight: 1 };
   return null;
@@ -92,6 +99,7 @@ export function recommendFocus(player: Player, role: RoleDef): FocusRecommendati
 export function recommendIntensity(player: Player): { level: "doble" | "normal" | "media"; why: string } {
   const age = player.age ?? 25;
   const nat = player.attrs.Nat?.value ?? 12;
+  if (age >= 30 && nat <= 10) return { level: "media", why: "30+ con forma física natural baja: los físicos caen rápido; prioriza recuperación" };
   if (age <= 23 && nat >= 12) return { level: "doble", why: "joven con buena forma física natural: desarrolla más rápido" };
   if (age >= 31 || nat <= 8) return { level: "media", why: age >= 31 ? "veterano: reduce riesgo de lesión y fatiga" : "forma física natural baja" };
   return { level: "normal", why: "edad y forma física estándar" };

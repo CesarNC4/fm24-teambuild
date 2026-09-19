@@ -6,6 +6,7 @@ import { FORMATIONS } from "@/lib/fm/formations";
 import { INSTRUCTIONS, INSTRUCTION_BY_ID, PHASE_LABEL, STYLE_BY_ID, STYLE_PRESETS, fitTone, instructionFit, type InstructionPhase } from "@/lib/fm/instructions";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
 import { buildLineup, newTactic, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
+import { strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
 
@@ -26,6 +27,7 @@ export default function TacticPage() {
   const updateTactic = useAppStore((s) => s.updateTactic);
   const removeTactic = useAppStore((s) => s.removeTactic);
   const setActiveTactic = useAppStore((s) => s.setActiveTactic);
+  const playerTraits = useAppStore((s) => s.playerTraits);
 
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
 
@@ -44,6 +46,20 @@ export default function TacticPage() {
   const lineup: LineupResult | null = useMemo(() => (tactic && players.length ? buildLineup(tactic, players) : null), [tactic, players]);
   const warnings = useMemo(() => (tactic ? tacticWarnings(tactic) : []), [tactic]);
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
+  const piBySlot = useMemo(() => {
+    const m = new Map<string, PISuggestion[]>();
+    if (!lineup || !tactic) return m;
+    const starters = lineup.slots.filter((s) => s.starter).map((s) => ({ player: s.starter!.player, slot: s.slot.slot }));
+    const aerial = strikerAerial(starters);
+    const teamRoles = lineup.slots.map((s) => s.role);
+    for (const s of lineup.slots) {
+      if (!s.starter) continue;
+      m.set(s.slot.id, suggestPlayerInstructions(s.starter.player, {
+        slot: s.slot.slot, role: s.role, styleId: tactic.styleId, traitIds: playerTraits[s.starter.player.uid] ?? [], teamRoles, strikerAerial: aerial,
+      }));
+    }
+    return m;
+  }, [lineup, tactic, playerTraits]);
 
   if (!hydrated) return null;
   if (players.length === 0) {
@@ -251,6 +267,42 @@ export default function TacticPage() {
           </div>
         )}
       </section>
+
+      {/* Instrucciones individuales */}
+      {lineup && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">Instrucciones individuales sugeridas</h2>
+          <p className="text-xs text-muted">
+            Por titular, según rol, estilo, atributos, pie fuerte y rasgos registrados. ●●● muy recomendable · ●●○ recomendable · ●○○ opcional.
+            <span className="text-attr-good"> ✓ rasgo</span> = ya lo hace por un rasgo (no hace falta darla); <span className="text-attr-low">✗ rasgo</span> = un rasgo suyo la contradice.
+          </p>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
+            {lineup.slots.map((s) => {
+              const sug = piBySlot.get(s.slot.id) ?? [];
+              return (
+                <div key={s.slot.id} className="bg-surface border border-border rounded-lg p-2.5 text-xs">
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-muted">{POSITION_LABEL[s.slot.slot]}</span>
+                    <span className="font-medium">{s.starter?.player.name ?? "—"}</span>
+                    <span className="text-muted">{s.role.es} ({DUTY_LABEL[s.role.duty]})</span>
+                  </div>
+                  {sug.length === 0 && <div className="text-muted">Sin sugerencias: las del rol bastan.</div>}
+                  <ul className="space-y-0.5">
+                    {sug.map((x) => (
+                      <li key={x.pi.id} className={x.coveredBy ? "opacity-60" : ""} title={`${x.pi.en}\n${x.why}`}>
+                        <span className="font-mono text-muted">{"●".repeat(x.strength)}{"○".repeat(3 - x.strength)}</span>{" "}
+                        <b>{x.pi.es}</b> <span className="text-muted">— {x.why}</span>
+                        {x.coveredBy && <span className="text-attr-good"> ✓ {x.coveredBy.es}</span>}
+                        {x.contradictedBy && <span className="text-attr-low"> ✗ {x.contradictedBy.es}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

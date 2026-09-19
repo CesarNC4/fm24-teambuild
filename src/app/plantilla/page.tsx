@@ -126,7 +126,7 @@ export default function SquadPage() {
               <th>Contrato</th>
               <th>Personalidad</th>
               {visibleAttrs.map((a) => (
-                <th key={a.key} title={a.es} className="cursor-pointer hover:text-accent num" onClick={() => setSort((s) => ({ key: a.key, dir: s.key === a.key ? (s.dir === 1 ? -1 : 1) : -1 }))}>
+                <th key={a.key} title={`${a.es}${a.desc ? ` — ${a.desc}` : ""}`} className="cursor-pointer hover:text-accent num" onClick={() => setSort((s) => ({ key: a.key, dir: s.key === a.key ? (s.dir === 1 ? -1 : 1) : -1 }))}>
                   {a.key}{sort.key === a.key ? (sort.dir === 1 ? "▲" : "▼") : ""}
                 </th>
               ))}
@@ -136,7 +136,12 @@ export default function SquadPage() {
             {sorted.map(({ p, best }) => (
               <tr key={p.uid}>
                 <td className="sticky left-0 bg-surface font-medium">{p.name}</td>
-                <td className="num">{p.age ?? "–"}</td>
+                <td className="num">
+                  {p.age ?? "–"}
+                  {(p.age ?? 0) >= 30 && (p.attrs.Nat?.value ?? 20) <= 10 && (
+                    <span className="text-attr-low" title={`Forma física natural ${p.attrs.Nat?.value}: a partir de los 30 los físicos caen rápido`}> ▼</span>
+                  )}
+                </td>
                 <td className="text-muted">{p.position.raw}</td>
                 <td className="num">{best[0] ? <ScoreBadge score={best[0].score} min={best[0].min} max={best[0].max} /> : "–"}</td>
                 <td className="text-xs text-muted">
