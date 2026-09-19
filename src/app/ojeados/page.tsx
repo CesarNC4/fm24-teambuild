@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { ATTR_BY_KEY } from "@/lib/fm/attributes";
 import { POSITION_LABEL } from "@/lib/fm/roles";
 import { TIER_LABEL, type PersonalityTierLevel } from "@/lib/fm/personalities";
-import { NEED_LABEL, SCOUTING_TIPS, VERDICT_LABEL, evaluateAll, fmtMoney, squadNeeds, suggestAssignments, type CandidateEval, type NeedLevel, type Verdict } from "@/lib/fm/scouting";
+import { NEED_LABEL, SCOUTING_TIPS, VERDICT_LABEL, evaluateAll, fmtMoney, overpaidPlayers, squadNeeds, standingAssignments, suggestAssignments, type CandidateEval, type NeedLevel, type Verdict } from "@/lib/fm/scouting";
 import { estimateGameYear } from "@/lib/fm/youth";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -43,6 +43,8 @@ export default function ScoutingPage() {
   const evals = useMemo(() => (needsRes ? evaluateAll(scouted, needsRes.needs, firstTeam, budget, gameYear) : []), [needsRes, scouted, firstTeam, budget, gameYear]);
   const assignments = useMemo(() => (needsRes ? suggestAssignments(needsRes.needs, firstTeam, budget) : []), [needsRes, firstTeam, budget]);
   const [showAssignments, setShowAssignments] = useState(true);
+  const standing = useMemo(() => (needsRes ? standingAssignments(needsRes.needs, firstTeam, budget) : []), [needsRes, firstTeam, budget]);
+  const overpaid = useMemo(() => (needsRes ? overpaidPlayers(firstTeam, needsRes.lineup) : []), [needsRes, firstTeam]);
 
   const list = evals.filter((e) => (!hideDiscarded || e.verdict !== "descartar") && (slotFilter === "todos" || e.fit?.need.slotId === slotFilter) && (maxAge === "" || (e.player.age ?? 0) <= maxAge));
 
@@ -93,7 +95,7 @@ export default function ScoutingPage() {
         </section>
       )}
 
-      {assignments.length > 0 && (
+      {needsRes && (
         <section className="space-y-2">
           <div className="flex items-center gap-3">
             <h2 className="font-semibold text-sm">Encargos para los ojeadores</h2>
@@ -101,7 +103,9 @@ export default function ScoutingPage() {
           </div>
           {showAssignments && (
             <div className="grid lg:grid-cols-[1fr_300px] gap-3">
-              <div className="grid md:grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <h3 className="text-xs font-medium text-muted">Por necesidad ({assignments.length}{assignments.length === 0 ? ": ningún hueco descubierto" : ""})</h3>
+                <div className="grid md:grid-cols-2 gap-2">
                 {assignments.map((a) => (
                   <div key={a.need.slotId} className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
                     <div className="flex justify-between gap-2">
@@ -119,11 +123,42 @@ export default function ScoutingPage() {
                     </table>
                   </div>
                 ))}
+                </div>
+                <h3 className="text-xs font-medium text-muted pt-1">Permanentes (siempre activos, un ojeador cada uno)</h3>
+                <div className="grid md:grid-cols-2 gap-2">
+                  {standing.map((a) => (
+                    <div key={a.id} className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
+                      <div className="font-medium">{a.title}</div>
+                      <p className="text-muted">{a.goal}</p>
+                      <table className="w-full">
+                        <tbody>
+                          {a.filters.map((f) => (
+                            <tr key={f.label}><td className="text-muted pr-2 align-top whitespace-nowrap">{f.label}</td><td>{f.value}</td></tr>
+                          ))}
+                          <tr><td className="text-muted pr-2 align-top whitespace-nowrap">Ojeador</td><td>{a.scoutProfile}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <aside className="bg-surface border border-border rounded-md p-3 text-xs space-y-1.5 self-start">
-                <h3 className="font-medium text-sm">Cómo montar el ojeo</h3>
-                {SCOUTING_TIPS.map((t, i) => <p key={i}>· {t}</p>)}
-                <p className="text-muted">En el juego: Ojeo → Encargos → Nuevo foco de reclutamiento, y copia estos filtros. El «Nivel en la app» es para comprobar aquí lo que traiga el informe.</p>
+              <aside className="space-y-3 self-start">
+                <div className="bg-surface border border-border rounded-md p-3 text-xs space-y-1.5">
+                  <h3 className="font-medium text-sm">Cómo montar el ojeo</h3>
+                  {SCOUTING_TIPS.map((t, i) => <p key={i}>· {t}</p>)}
+                  <p className="text-muted">En el juego: Ojeo → Encargos → Nuevo foco de reclutamiento, y copia estos filtros. El «Nivel en la app» es para comprobar aquí lo que traiga el informe.</p>
+                </div>
+                <div className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
+                  <h3 className="font-medium text-sm">Sueldos por encima de lo que aportan</h3>
+                  <p className="text-muted">Para financiar fichajes: cobran como titulares y rinden como suplentes (puesto por sueldo vs puesto por nivel).</p>
+                  {overpaid.length === 0 && <p className="text-muted">Nadie destaca.</p>}
+                  {overpaid.map((o) => (
+                    <div key={o.player.uid} className="flex justify-between gap-2">
+                      <span>{o.player.name} <span className="text-muted">{o.player.age}</span></span>
+                      <span className="text-muted whitespace-nowrap">{o.player.wage != null ? fmtMoney(o.player.wage) : ""} · {o.wageRank}º sueldo / {o.levelRank}º nivel</span>
+                    </div>
+                  ))}
+                </div>
               </aside>
             </div>
           )}

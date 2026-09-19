@@ -270,4 +270,136 @@ export const SCOUTING_TIPS: string[] = [
   "Un informe es fiable a partir de recomendación B+ y con conocimiento alto; con atributos en rango, «ojear a fondo» antes de ofertar.",
   "Truco de presupuesto: sube el alcance a Mundial sin avanzar el tiempo, haz las búsquedas y listas, y vuelve al alcance barato antes del cobro mensual.",
   "Conocimiento: segunda nacionalidad del entrenador en la región objetivo (50-80 % de conocimiento) y clubes afiliados que compartan ojeo.",
+  "Antes de buscar, mira la media de atributos de tu liga por posición y filtra por encima de ella; ordena la búsqueda por valor para no pagar de más.",
+  "Pide al director deportivo recomendaciones por posición y rol (pestaña Traspasos) y revisa las estadísticas de tu liga y de la división inferior: rinden y son asequibles.",
 ];
+
+// ---------------------------------------------------------------------------
+// Encargos permanentes (no dependen de una necesidad concreta)
+// ---------------------------------------------------------------------------
+
+export interface StandingAssignment {
+  id: string;
+  title: string;
+  goal: string;
+  scoutProfile: string;
+  filters: { label: string; value: string }[];
+}
+
+/**
+ * Encargos "en curso" que la guía recomienda tener siempre: oportunidades para
+ * el primer equipo, jóvenes con potencial, cantera, agentes libres, cesiones y
+ * conocimiento de regiones. Los umbrales salen de la plantilla actual.
+ */
+export function standingAssignments(needs: SquadNeed[], firstTeam: Player[], budget: Budget): StandingAssignment[] {
+  const wages = firstTeam.map((x) => x.wage).filter((w): w is number => w != null).sort((a, b) => a - b);
+  const medianWage = wages.length ? wages[Math.floor(wages.length / 2)] : null;
+  const maxWage = wages.length ? wages[wages.length - 1] : null;
+  const starters = needs.map((n) => n.starter?.effective ?? 0).filter((v) => v > 0);
+  const avg = starters.length ? starters.reduce((a, b) => a + b, 0) / starters.length : 65;
+  const weakest = needs.reduce<SquadNeed | null>((w, n) => (!w || (n.starter?.effective ?? 0) < (w.starter?.effective ?? 0) ? n : w), null);
+  const wageCap = budget.wage ?? maxWage;
+  const wageTxt = wageCap != null ? `≤ ${fmtMoney(wageCap)}` : "dentro de la estructura";
+  const valueTxt = budget.transfer != null ? `≤ ${fmtMoney(budget.transfer)}` : "según presupuesto";
+  const aging = needs.filter((n) => (n.starter?.player.age ?? 0) >= 28).map((n) => POSITION_LABEL_ES[n.slot]).join(", ");
+  const short = needs.filter((n) => n.level === "urgente" || n.level === "mejorable").map((n) => POSITION_LABEL_ES[n.slot]).join(", ");
+  return [
+    {
+      id: "primer-equipo",
+      title: "Oportunidades para el primer equipo",
+      goal: "Que aparezca cualquier jugador que mejore un hueco aunque hoy no sea una necesidad.",
+      scoutProfile: "ojeador general (habilidad y potencial altos), prioridad normal, en curso",
+      filters: [
+        { label: "Posición", value: "cualquiera" },
+        { label: "Edad", value: "22-29" },
+        { label: "Habilidad actual", value: `≥ nivel del primer equipo (media de tus titulares ≈ ${Math.round(avg)} en la app; ≈3 estrellas)` },
+        { label: "Situación", value: "contrato termina en 12 meses, transferibles, cláusula de rescisión" },
+        { label: "Sueldo / valor", value: `${wageTxt} · ${valueTxt}` },
+      ],
+    },
+    {
+      id: "futuro",
+      title: "Jóvenes con potencial (futuro)",
+      goal: "Relevos a 2-3 años para los puestos con titulares de 28+ y jugadores que se revaloricen.",
+      scoutProfile: "ojeador de cantera (Juzgar potencial ≥15), prioridad normal, en curso",
+      filters: [
+        { label: "Posición", value: aging || "cualquiera" },
+        { label: "Edad", value: "17-21" },
+        { label: "Potencial", value: "≥ 4 estrellas; habilidad actual ≥ 2" },
+        { label: "Personalidad", value: "Determinación ≥ 12; sin ambición ni profesionalidad bajas" },
+        { label: "Sueldo", value: medianWage != null ? `≤ ${fmtMoney(medianWage)} (mediana de la plantilla)` : "bajo" },
+      ],
+    },
+    {
+      id: "cantera",
+      title: "Captación juvenil (15-17)",
+      goal: "Fichajes baratos para el Sub-18 antes de que firmen su primer contrato profesional.",
+      scoutProfile: "ojeador de cantera con conocimiento del país; prioridad normal, en curso; regiones con buena captación",
+      filters: [
+        { label: "Edad", value: "15-17" },
+        { label: "Potencial", value: "≥ 4 estrellas" },
+        { label: "Contrato", value: "juvenil o sin contrato; ojo al permiso de trabajo y a la edad mínima para fichar extranjeros" },
+        { label: "Personalidad", value: "Determinación y profesionalidad altas; las estrellas de potencial engañan más a esta edad" },
+      ],
+    },
+    {
+      id: "libres",
+      title: "Agentes libres y fin de contrato",
+      goal: "Fichar sin traspaso: contratos que terminan en 6 meses (precontrato) o ya sin club.",
+      scoutProfile: "ojeador general; búsqueda de jugadores con filtro de contrato, revisar cada mes",
+      filters: [
+        { label: "Situación", value: "sin club o contrato termina en 6 meses; en clubes grandes, también «queda 1 año» + sondeo para inquietarlo" },
+        { label: "Edad", value: "≤ 30 (31+ solo contrato de 1 año)" },
+        { label: "Nivel", value: weakest?.starter ? `≥ ${Math.round(weakest.targetScore)} (rotación en ${weakest.role.es}, tu hueco más flojo)` : "≥ rotación" },
+        { label: "Sueldo", value: "es donde se lo gastan: fija tope antes de hablar con el agente" },
+      ],
+    },
+    {
+      id: "cesiones",
+      title: "Mercado de cesiones",
+      goal: "Cubrir huecos urgentes sin traspaso: cedibles de clubes de categoría superior o del club afiliado senior.",
+      scoutProfile: "ojeador general; filtro «cedible» en clubes de divisiones superiores; pedir a la directiva un afiliado senior si no hay",
+      filters: [
+        { label: "Posición", value: short || "las que se queden cortas por lesiones" },
+        { label: "Edad", value: "≤ 24 (el club de origen cede a los que necesitan minutos)" },
+        { label: "Condiciones", value: "sin opción obligatoria; aporte de sueldo parcial; opción de compra si es joven" },
+      ],
+    },
+    {
+      id: "conocimiento",
+      title: "Conocimiento de regiones",
+      goal: "Abrir mercados donde el conocimiento es bajo para que las búsquedas muestren jugadores que hoy no ves.",
+      scoutProfile: "ojeador itinerante (Adaptabilidad alta), un país o región por encargo, varios meses",
+      filters: [
+        { label: "Región", value: "donde el conocimiento sea «mínimo» o «nominal»: Sudamérica, Escandinavia y Europa del Este suelen dar buena relación calidad-precio" },
+        { label: "Complemento", value: "segunda nacionalidad del entrenador en la región y clubes afiliados que compartan ojeo" },
+      ],
+    },
+  ];
+}
+
+/**
+ * Sobrepagados: sueldo muy por encima de lo que aportan (guía de finanzas:
+ * reestructurar la masa salarial vendiendo a los caros que no rinden).
+ */
+export interface Overpaid {
+  player: Player;
+  wageRank: number;
+  levelRank: number;
+  level: number;
+}
+
+export function overpaidPlayers(firstTeam: Player[], lineup: LineupResult): Overpaid[] {
+  const level = new Map<string, number>();
+  for (const s of lineup.slots) if (s.starter) level.set(s.starter.player.uid, s.starter.effective);
+  for (const b of lineup.bench) level.set(b.player.uid, b.effective);
+  const withWage = firstTeam.filter((p) => p.wage != null);
+  const byWage = [...withWage].sort((a, b) => (b.wage ?? 0) - (a.wage ?? 0));
+  const byLevel = [...withWage].sort((a, b) => (level.get(b.uid) ?? 0) - (level.get(a.uid) ?? 0));
+  const wages = withWage.map((p) => p.wage as number).sort((a, b) => a - b);
+  const median = wages.length ? wages[Math.floor(wages.length / 2)] : 0;
+  return withWage
+    .map((p) => ({ player: p, wageRank: byWage.indexOf(p) + 1, levelRank: byLevel.indexOf(p) + 1, level: level.get(p.uid) ?? 0 }))
+    .filter((o) => o.levelRank - o.wageRank >= 6 && (o.player.wage ?? 0) > median)
+    .sort((a, b) => (b.levelRank - b.wageRank) - (a.levelRank - a.wageRank));
+}
