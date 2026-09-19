@@ -78,6 +78,14 @@ html, body {
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
+/* Esta regla está fuera de las capas de Tailwind y ganaría siempre a la utilidad. */
+.tbl td.whitespace-normal,
+.tbl td.whitespace-normal * {
+  white-space: normal;
+}
+.tbl td.whitespace-normal .whitespace-nowrap {
+  white-space: nowrap;
+}
 .tbl tbody tr:hover td {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }

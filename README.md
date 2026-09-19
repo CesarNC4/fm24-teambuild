@@ -23,6 +23,15 @@ del cuerpo técnico (Idoneidad/Potencial), partidos, minutos, goles,
 asistencias, moral y condición: alimentan Juveniles, las charlas y las alertas
 de contrato. Las columnas de estrellas (Calidad/Potencial) se exportan vacías.
 
+La exportación de la liga (búsqueda de jugadores con todos los de la
+competición) solo incluye las filas que el juego ha llegado a cargar en
+pantalla. Baja hasta el final de la lista antes de imprimir y, si aun así
+faltan, exporta por trozos (filtrando por posición o por club) y marca
+«añadir a los ya guardados» en Importar: los repetidos se fusionan por UID.
+Con la liga completa, Radiografía muestra el percentil de cada titular y la
+comparación de equipos por atributo (la pantalla «Comparación» del juego, que
+no se puede exportar).
+
 El parser reconoce cabeceras en español e inglés y permite corregir a mano las
 que no identifique; la corrección se recuerda para importaciones posteriores.
 

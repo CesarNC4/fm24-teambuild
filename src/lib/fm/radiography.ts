@@ -5,7 +5,8 @@
  */
 
 import type { AttrKey } from "./attributes";
-import { FAMILIES, familyOf, leagueLevelPercentile, mean, type Family, type LeagueStats } from "./league";
+import { FAMILIES, familyOf, familyOfSlot, leagueLevelPercentile, mean, percentile, type Family, type LeagueStats } from "./league";
+import { bestRoles } from "./scoring";
 import type { LineupResult } from "./tactics";
 import type { Player, PositionSlot } from "./types";
 
@@ -142,9 +143,22 @@ export interface LeagueComparison {
   players: { player: Player; percentile: number | null }[];
 }
 
-export function leagueComparison(firstTeam: Player[], league: LeagueStats): LeagueComparison[] {
+/**
+ * Familia de cada jugador para compararlo con la liga: los titulares, por el
+ * hueco que ocupan en la táctica (un MC que juega de mediapunta se compara con
+ * los mediapuntas); el resto, por su primera posición.
+ */
+export function leagueComparison(firstTeam: Player[], league: LeagueStats, lineup: LineupResult | null = null): LeagueComparison[] {
+  const slotOf = new Map<string, PositionSlot>();
+  if (lineup) for (const s of lineup.slots) if (s.starter) slotOf.set(s.starter.player.uid, s.slot.slot);
+  const famOf = (p: Player) => { const s = slotOf.get(p.uid); return s ? familyOfSlot(s) : familyOf(p); };
   return FAMILIES.map((family) => {
-    const players = firstTeam.filter((p) => familyOf(p) === family).map((p) => ({ player: p, percentile: leagueLevelPercentile(league, p) })).sort((a, b) => (b.percentile ?? 0) - (a.percentile ?? 0));
+    const players = firstTeam.filter((p) => famOf(p) === family).map((p) => {
+      const best = bestRoles(p, 1)[0];
+      // Percentil del nivel dentro de la familia donde juega, no de la suya natural
+      const pct = best ? percentile(league.byFamily[family].level, best.score) : leagueLevelPercentile(league, p);
+      return { player: p, percentile: pct };
+    }).sort((a, b) => (b.percentile ?? 0) - (a.percentile ?? 0));
     const vals = players.map((x) => x.percentile).filter((v): v is number => v != null);
     return { family, meanPercentile: vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null, players };
   });

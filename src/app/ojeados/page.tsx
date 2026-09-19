@@ -292,7 +292,7 @@ function Row({ e, leaguePct, target, onTrack, isOpen, toggle }: { e: CandidateEv
       {isOpen && (
         <tr className="bg-surface-2/50">
           <td colSpan={15} className="text-xs p-3 whitespace-normal">
-            <div className="grid md:grid-cols-3 gap-3">
+            <div className="grid md:grid-cols-3 gap-3 [&>div]:min-w-0">
               <div>
                 <div className="font-medium mb-1">A favor</div>
                 {e.pluses.length === 0 && <p className="text-muted">Nada destacable.</p>}

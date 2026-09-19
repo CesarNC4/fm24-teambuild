@@ -168,7 +168,7 @@ function Row({ a, history, gameYear, isOpen, toggle }: { a: YouthAssessment; his
       {isOpen && (
         <tr className="bg-surface-2/50">
           <td colSpan={11} className="text-xs p-3 whitespace-normal">
-            <div className="grid md:grid-cols-3 gap-3">
+            <div className="grid md:grid-cols-3 gap-3 [&>div]:min-w-0">
               <div>
                 <div className="font-medium mb-1">Motivos</div>
                 {a.reasons.map((r, i) => <p key={i}>· {r}</p>)}

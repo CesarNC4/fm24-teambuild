@@ -74,6 +74,11 @@ export default function ImportPage() {
   const [fileName, setFileName] = useState("");
   const [overrides, setOverrides] = useState<Record<string, string | null>>(savedOverrides);
   const [saved, setSaved] = useState(false);
+  /** Liga / ojeados: fusionar con lo ya guardado (el juego exporta la búsqueda por trozos). */
+  const [append, setAppend] = useState(false);
+  const existing = useAppStore((s) => s.players[source] ?? []);
+  const existingMeta = imports[source];
+  const canAppend = source === "liga" || source === "ojeados";
 
   const { result, error } = useMemo<{ result: ImportResult | null; error: string | null }>(() => {
     if (!html) return { result: null, error: null };
@@ -93,7 +98,16 @@ export default function ImportPage() {
 
   const save = () => {
     if (!result) return;
-    setPlayers(source, result.players, { fileName, importedAt: new Date().toISOString(), count: result.players.length });
+    let players = result.players;
+    let name = fileName;
+    if (append && canAppend && existing.length) {
+      const fresh = new Set(players.map((p) => p.uid));
+      players = [...existing.filter((p) => !fresh.has(p.uid)), ...players];
+      const prev = existingMeta?.fileName ?? "";
+      const n = (prev.match(/\+ (\d+) más/)?.[1] ?? "0");
+      name = prev.includes(" + ") ? prev.replace(/\+ \d+ más/, `+ ${Number(n) + 1} más`) : `${prev} + 1 más`;
+    }
+    setPlayers(source, players, { fileName: name, importedAt: new Date().toISOString(), count: players.length });
     setHeaderOverrides(overrides);
     setSaved(true);
   };
@@ -228,12 +242,18 @@ export default function ImportPage() {
               {result.missingAttrs.length ? `${result.missingAttrs.length} atributos sin columna` : "47/47 atributos detectados"}
             </div>
             {result.droppedRows > 0 && <div className="text-attr-low">{result.droppedRows} filas descartadas</div>}
+            {canAppend && existing.length > 0 && (
+              <label className="ml-auto flex items-center gap-1 text-xs cursor-pointer" title="El juego solo exporta las filas que ha cargado en pantalla. Exporta la búsqueda por trozos (por posición o por club) y añádelos aquí uno a uno; los jugadores repetidos se sustituyen por UID.">
+                <input type="checkbox" checked={append} onChange={(e) => setAppend(e.target.checked)} />
+                añadir a los {existing.length} ya guardados (fusiona por UID)
+              </label>
+            )}
             <button
               onClick={save}
               disabled={result.players.length === 0}
-              className="ml-auto px-4 py-1.5 rounded-md bg-accent text-accent-fg font-medium disabled:opacity-50"
+              className={`${canAppend && existing.length > 0 ? "" : "ml-auto "}px-4 py-1.5 rounded-md bg-accent text-accent-fg font-medium disabled:opacity-50`}
             >
-              Guardar como {squads.find((q) => q.id === source)?.name ?? source}
+              {append && canAppend && existing.length ? "Añadir a" : "Guardar como"} {squads.find((q) => q.id === source)?.name ?? source}
             </button>
             {saved && <span className="text-attr-good">Guardado ✓</span>}
           </div>
