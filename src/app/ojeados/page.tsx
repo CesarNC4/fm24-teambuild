@@ -7,7 +7,8 @@ import { POSITION_LABEL } from "@/lib/fm/roles";
 import { TIER_LABEL, type PersonalityTierLevel } from "@/lib/fm/personalities";
 import { NEED_LABEL, SCOUTING_TIPS, VERDICT_LABEL, evaluateAll, fmtMoney, overpaidPlayers, squadNeeds, standingAssignments, suggestAssignments, type CandidateEval, type NeedLevel, type Verdict } from "@/lib/fm/scouting";
 import { estimateGameYear } from "@/lib/fm/youth";
-import { useAppStore } from "@/lib/store";
+import { buildLeagueStats, leagueLevelPercentile } from "@/lib/fm/league";
+import { useAppStore, type TargetEntry } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
 
 const NEED_CLASS: Record<NeedLevel, string> = {
@@ -30,6 +31,9 @@ export default function ScoutingPage() {
   const activeTacticId = useAppStore((s) => s.activeTacticId);
   const budget = useAppStore((s) => s.scoutingBudget);
   const setBudget = useAppStore((s) => s.setScoutingBudget);
+  const targets = useAppStore((s) => s.targets);
+  const setTarget = useAppStore((s) => s.setTarget);
+  const [showTargets, setShowTargets] = useState(true);
   const [slotFilter, setSlotFilter] = useState<string>("todos");
   const [hideDiscarded, setHideDiscarded] = useState(true);
   const [maxAge, setMaxAge] = useState<number | "">("");
@@ -37,6 +41,9 @@ export default function ScoutingPage() {
 
   const firstTeam = useMemo(() => players.plantilla ?? [], [players.plantilla]);
   const scouted = useMemo(() => players.ojeados ?? [], [players.ojeados]);
+  const league = useMemo(() => ((players.liga?.length ?? 0) >= 50 ? buildLeagueStats(players.liga) : null), [players.liga]);
+  const scoutedByUid = useMemo(() => new Map(scouted.map((p) => [p.uid, p])), [scouted]);
+  const targetList = useMemo(() => Object.entries(targets).map(([uid, t]) => ({ uid, t, current: scoutedByUid.get(uid) ?? null })).sort((a, b) => a.t.addedAt.localeCompare(b.t.addedAt)), [targets, scoutedByUid]);
   const tactic = tactics.find((t) => t.id === activeTacticId) ?? tactics[0] ?? null;
   const gameYear = useMemo(() => estimateGameYear(firstTeam), [firstTeam]);
   const needsRes = useMemo(() => (tactic && firstTeam.length ? squadNeeds(tactic, firstTeam, gameYear) : null), [tactic, firstTeam, gameYear]);
@@ -165,6 +172,50 @@ export default function ScoutingPage() {
         </section>
       )}
 
+      {targetList.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold text-sm">Seguimiento de objetivos ({targetList.length})</h2>
+            <button className="text-xs underline text-muted" onClick={() => setShowTargets(!showTargets)}>{showTargets ? "ocultar" : "mostrar"}</button>
+          </div>
+          {showTargets && (
+            <div className="overflow-auto border border-border rounded-md">
+              <table className="tbl w-full">
+                <thead><tr><th>Jugador</th><th>Estado</th><th>Club</th><th className="num">Valor</th><th className="num">Sueldo</th><th>Contrato</th><th>Cambios desde que lo marcaste</th><th>Nota</th><th></th></tr></thead>
+                <tbody>
+                  {targetList.map(({ uid, t, current }) => {
+                    const changes: string[] = [];
+                    if (current) {
+                      if (current.club !== t.snapshot.club) changes.push(`club: ${t.snapshot.club ?? "?"} → ${current.club ?? "?"}`);
+                      if (current.value != null && t.snapshot.value != null && Math.abs(current.value - t.snapshot.value) / Math.max(1, t.snapshot.value) > 0.15) changes.push(`valor: ${fmtMoney(t.snapshot.value)} → ${fmtMoney(current.value)}`);
+                      if (current.wage != null && t.snapshot.wage != null && current.wage !== t.snapshot.wage) changes.push(`sueldo: ${fmtMoney(t.snapshot.wage)} → ${fmtMoney(current.wage)}`);
+                      if (current.contractExpiry !== t.snapshot.contractExpiry) changes.push(`contrato: ${t.snapshot.contractExpiry ?? "?"} → ${current.contractExpiry ?? "?"}`);
+                    }
+                    return (
+                      <tr key={uid}>
+                        <td className="font-medium">{t.snapshot.name} <span className="text-muted">{current?.age ?? t.snapshot.age}</span></td>
+                        <td>
+                          <select className="bg-surface border border-border rounded px-1 text-xs" value={t.status} onChange={(e) => setTarget(uid, { ...t, status: e.target.value as TargetEntry["status"] })}>
+                            <option value="seguir">Seguir</option><option value="ofertar">Ofertar</option><option value="rechazado">Rechazado</option><option value="fichado">Fichado</option>
+                          </select>
+                        </td>
+                        <td className="text-xs">{current?.club ?? t.snapshot.club ?? "—"}</td>
+                        <td className="num text-xs">{(current?.value ?? t.snapshot.value) != null ? fmtMoney((current?.value ?? t.snapshot.value)!) : "–"}</td>
+                        <td className="num text-xs">{(current?.wage ?? t.snapshot.wage) != null ? fmtMoney((current?.wage ?? t.snapshot.wage)!) : "–"}</td>
+                        <td className="text-xs">{current?.contractExpiry ?? t.snapshot.contractExpiry ?? "—"}</td>
+                        <td className="text-xs whitespace-normal">{!current ? <span className="text-attr-mid">no está en la última importación de ojeados</span> : changes.length ? <span className="text-attr-mid">{changes.join(" · ")}</span> : <span className="text-muted">sin cambios</span>}</td>
+                        <td><input className="bg-surface border border-border rounded px-1 text-xs w-40" value={t.note} placeholder="nota…" onChange={(e) => setTarget(uid, { ...t, note: e.target.value })} /></td>
+                        <td><button className="text-xs text-attr-low hover:underline" onClick={() => setTarget(uid, null)}>quitar</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="space-y-2">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <h2 className="font-semibold">Candidatos ({list.length}{scouted.length !== list.length ? ` de ${scouted.length}` : ""})</h2>
@@ -181,11 +232,21 @@ export default function ScoutingPage() {
               <thead>
                 <tr>
                   <th>Jugador</th><th className="num">Edad</th><th>Club</th><th>Hueco</th><th className="num">Nivel</th><th className="num">vs 1º eq.</th>
-                  <th>Personalidad</th><th className="num">Det</th><th className="num">Sueldo</th><th className="num">Valor</th><th>Contrato</th><th className="num">Conoc.</th><th>Veredicto</th>
+                  <th>Personalidad</th><th className="num">Det</th><th className="num">Sueldo</th><th className="num">Valor</th><th>Contrato</th><th className="num">Conoc.</th>{league && <th className="num" title="Percentil de su nivel dentro de su familia de posición en la liga importada">Liga %</th>}<th>Veredicto</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {list.map((e) => <Row key={e.player.uid} e={e} isOpen={open === e.player.uid} toggle={() => setOpen(open === e.player.uid ? null : e.player.uid)} />)}
+                {list.map((e) => (
+                  <Row
+                    key={e.player.uid}
+                    e={e}
+                    leaguePct={league ? leagueLevelPercentile(league, e.player) : undefined}
+                    target={targets[e.player.uid] ?? null}
+                    onTrack={() => setTarget(e.player.uid, { status: "seguir", note: "", addedAt: new Date().toISOString(), snapshot: { name: e.player.name, club: e.player.club, value: e.player.value, wage: e.player.wage, contractExpiry: e.player.contractExpiry, age: e.player.age } })}
+                    isOpen={open === e.player.uid}
+                    toggle={() => setOpen(open === e.player.uid ? null : e.player.uid)}
+                  />
+                ))}
               </tbody>
             </table>
           </div>
@@ -199,7 +260,7 @@ export default function ScoutingPage() {
   );
 }
 
-function Row({ e, isOpen, toggle }: { e: CandidateEval; isOpen: boolean; toggle: () => void }) {
+function Row({ e, leaguePct, target, onTrack, isOpen, toggle }: { e: CandidateEval; leaguePct?: number | null; target: TargetEntry | null; onTrack: () => void; isOpen: boolean; toggle: () => void }) {
   const p = e.player;
   const tier = e.personalityTier as PersonalityTierLevel;
   const det = p.attrs.Det?.value ?? null;
@@ -221,11 +282,16 @@ function Row({ e, isOpen, toggle }: { e: CandidateEval; isOpen: boolean; toggle:
         <td className="num text-xs whitespace-nowrap">{p.value != null ? fmtMoney(p.value) : "–"}{p.releaseClause != null && <span className="text-muted"> (cl. {fmtMoney(p.releaseClause)})</span>}</td>
         <td className="text-xs whitespace-nowrap">{p.contractExpiry ?? "—"}{p.transferStatus && /listado|listed/i.test(p.transferStatus) ? " · transferible" : ""}</td>
         <td className={`num text-xs ${e.knowledge < 0.5 ? "text-attr-mid" : ""}`}>{Math.round(e.knowledge * 100)} %</td>
+        {leaguePct !== undefined && <td className={`num text-xs ${leaguePct != null && leaguePct >= 80 ? "text-attr-good" : ""}`}>{leaguePct ?? "–"}</td>}
         <td className="text-xs whitespace-nowrap"><span className={`px-1.5 py-0.5 rounded ${VERDICT_CLASS[e.verdict]}`}>{VERDICT_LABEL[e.verdict]}</span></td>
+        <td className="text-xs whitespace-nowrap" onClick={(ev) => ev.stopPropagation()}>
+          {target ? <span className="text-muted">★ {target.status}</span> : <button className="text-[10px] px-1.5 rounded border border-border hover:bg-surface-2" onClick={onTrack}>seguir</button>}
+          {e.fit?.need.starter && <Link className="text-[10px] ml-1 underline text-muted" href={`/comparar?a=${e.player.uid}&b=${e.fit.need.starter.player.uid}`}>comparar</Link>}
+        </td>
       </tr>
       {isOpen && (
         <tr className="bg-surface-2/50">
-          <td colSpan={13} className="text-xs p-3 whitespace-normal">
+          <td colSpan={15} className="text-xs p-3 whitespace-normal">
             <div className="grid md:grid-cols-3 gap-3">
               <div>
                 <div className="font-medium mb-1">A favor</div>

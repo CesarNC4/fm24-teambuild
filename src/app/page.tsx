@@ -41,6 +41,30 @@ export default function ImportPage() {
   const updateSquad = useAppStore((s) => s.updateSquad);
   const removeSquad = useAppStore((s) => s.removeSquad);
   const [newSquad, setNewSquad] = useState("");
+  const restoreBackup = useAppStore((s) => s.restoreBackup);
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+
+  const exportBackup = () => {
+    const s = useAppStore.getState();
+    const data = { version: 1, exportedAt: new Date().toISOString(), players: s.players, imports: s.imports, squads: s.squads, headerOverrides: s.headerOverrides, clubName: s.clubName, tactics: s.tactics, activeTacticId: s.activeTacticId, playerTraits: s.playerTraits, trainingWeek: s.trainingWeek, scoutingBudget: s.scoutingBudget, history: s.history, targets: s.targets };
+    const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `fm24-asistente-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  const importBackup = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!data || typeof data !== "object" || !data.players) throw new Error("no es una copia de FM24 Asistente");
+      restoreBackup(data);
+      setBackupMsg(`Copia restaurada (${Object.values(data.players as Record<string, unknown[]>).reduce((n, l) => n + l.length, 0)} jugadores, ${(data.tactics ?? []).length} tácticas).`);
+    } catch (e) {
+      setBackupMsg(`No se pudo restaurar: ${(e as Error).message}`);
+    }
+  };
   const savedOverrides = useAppStore((s) => s.headerOverrides);
   const setHeaderOverrides = useAppStore((s) => s.setHeaderOverrides);
 
@@ -79,7 +103,7 @@ export default function ImportPage() {
         <div className="space-y-4">
           <h1 className="text-2xl font-semibold">Importar exportación de FM24</h1>
           <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
-            <li>En el juego, abre la vista de <b>Plantilla</b> (o la lista de ojeados) con una vista que muestre <b>todos los atributos</b>, posición, edad, personalidad, sueldo, valor y fin de contrato.</li>
+            <li>En el juego, abre la vista de <b>Plantilla</b> (o la lista de ojeados, o una búsqueda de toda la liga) con una vista que muestre <b>todos los atributos</b>, posición, edad, personalidad, sueldo, valor y fin de contrato.</li>
             <li>Pulsa <kbd className="px-1 rounded bg-surface-2 border border-border">Ctrl</kbd>+<kbd className="px-1 rounded bg-surface-2 border border-border">P</kbd> → <i>Página web</i> y guarda el archivo.</li>
             <li>Súbelo aquí. Revisa las columnas detectadas y guarda.</li>
           </ol>
@@ -165,6 +189,18 @@ export default function ImportPage() {
             );
           })}
           <p className="text-xs text-muted">Todo se guarda solo en este navegador; nada se sube a ningún servidor.</p>
+          <div className="border-t border-border pt-2 space-y-1">
+            <div className="font-medium text-xs">Copia de seguridad</div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <button className="px-2 py-0.5 rounded border border-border hover:bg-surface-2" onClick={exportBackup}>Exportar todo (.json)</button>
+              <label className="px-2 py-0.5 rounded border border-border hover:bg-surface-2 cursor-pointer">
+                Restaurar copia…
+                <input type="file" accept=".json,application/json" className="hidden" onChange={(e) => importBackup(e.target.files?.[0])} />
+              </label>
+            </div>
+            <p className="text-xs text-muted">Incluye plantillas, filiales, tácticas, rasgos, historial y objetivos. Restaurar sustituye lo que haya en este navegador.</p>
+            {backupMsg && <p className="text-xs">{backupMsg}</p>}
+          </div>
         </aside>
       </section>
 

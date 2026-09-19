@@ -13,6 +13,9 @@ const LINKS: { href: string; label: string; soon?: boolean }[] = [
   { href: "/entrenamiento", label: "Entrenamiento" },
   { href: "/juveniles", label: "Juveniles" },
   { href: "/ojeados", label: "Ojeados" },
+  { href: "/balon-parado", label: "Balón parado" },
+  { href: "/radiografia", label: "Radiografía" },
+  { href: "/comparar", label: "Comparar" },
 ];
 
 export function Nav() {

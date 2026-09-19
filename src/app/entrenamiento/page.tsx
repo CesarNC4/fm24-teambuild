@@ -107,7 +107,7 @@ export default function TrainingPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Entrenamiento</h1>
         <select className="bg-surface border border-border rounded px-2 py-1 text-sm" value={squadId} onChange={(e) => setSquadId(e.target.value)}>
-          {squads.filter((q) => q.kind !== "ojeados").map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
+          {squads.filter((q) => q.kind === "primer" || q.kind === "filial").map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
         </select>
         <div className="flex gap-1 text-sm">
           {(["individual", "semana", "tutoria", "personalidad"] as Tab[]).map((t) => (

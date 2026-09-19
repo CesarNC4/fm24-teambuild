@@ -24,7 +24,17 @@ export interface ImportMeta {
 export const DEFAULT_SQUADS: Squad[] = [
   { id: "plantilla", name: "Primer equipo", kind: "primer", maxAge: null, competitive: true },
   { id: "ojeados", name: "Ojeados / búsqueda", kind: "ojeados", maxAge: null, competitive: false },
+  { id: "liga", name: "Liga (todos los jugadores)", kind: "liga", maxAge: null, competitive: true },
 ];
+
+/** Seguimiento de un objetivo de fichaje (por UID, sobrevive a las importaciones). */
+export interface TargetEntry {
+  status: "seguir" | "ofertar" | "rechazado" | "fichado";
+  note: string;
+  addedAt: string;
+  /** Datos en el momento de marcarlo, para detectar cambios. */
+  snapshot: { name: string; club: string | null; value: number | null; wage: number | null; contractExpiry: string | null; age: number | null };
+}
 
 interface AppState {
   players: Record<ImportSource, Player[]>;
@@ -46,6 +56,8 @@ interface AppState {
   scoutingBudget: { transfer: number | null; wage: number | null };
   /** Fotos de atributos por UID en cada importación (evolución). */
   history: History;
+  /** Objetivos de fichaje marcados en Ojeados. */
+  targets: Record<string, TargetEntry>;
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
@@ -62,6 +74,9 @@ interface AppState {
   setPlayerTraits: (uid: string, traitIds: string[]) => void;
   setTrainingWeek: (w: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number; youthTheme?: string }) => void;
   setScoutingBudget: (b: { transfer: number | null; wage: number | null }) => void;
+  setTarget: (uid: string, entry: TargetEntry | null) => void;
+  /** Restaura una copia de seguridad (sustituye todo lo persistido). */
+  restoreBackup: (data: Partial<PersistedState>) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -79,6 +94,7 @@ export const useAppStore = create<AppState>()(
       trainingWeek: { matchDays: [5], preseason: false },
       scoutingBudget: { transfer: null, wage: null },
       history: {},
+      targets: {},
 
       setPlayers: (source, players, meta) =>
         set((s) => ({
@@ -86,7 +102,7 @@ export const useAppStore = create<AppState>()(
           imports: { ...s.imports, [source]: meta },
           clubName: source === "plantilla" ? (mostCommonClub(players) ?? s.clubName) : s.clubName,
           // Los ojeados no cuentan: sus atributos vienen en rango y no son de tu club.
-          history: source === "ojeados" ? s.history : appendSnapshots(s.history, players, meta.importedAt),
+          history: source === "ojeados" || source === "liga" ? s.history : appendSnapshots(s.history, players, meta.importedAt),
         })),
       clearSource: (source) =>
         set((s) => ({
@@ -128,11 +144,18 @@ export const useAppStore = create<AppState>()(
       setPlayerTraits: (uid, traitIds) => set((s) => ({ playerTraits: { ...s.playerTraits, [uid]: traitIds } })),
       setTrainingWeek: (trainingWeek) => set({ trainingWeek }),
       setScoutingBudget: (scoutingBudget) => set({ scoutingBudget }),
+      setTarget: (uid, entry) =>
+        set((s) => {
+          const targets = { ...s.targets };
+          if (entry) targets[uid] = entry; else delete targets[uid];
+          return { targets };
+        }),
+      restoreBackup: (data) => set((s) => ({ ...s, ...normalizePersisted(data), hydrated: true })),
     }),
     {
       name: "fm24-assistant",
       storage: createJSONStorage(() => idbStorage),
-      partialize: (s) => ({
+      partialize: (s): PersistedState => ({
         players: s.players,
         imports: s.imports,
         squads: s.squads,
@@ -144,19 +167,29 @@ export const useAppStore = create<AppState>()(
         trainingWeek: s.trainingWeek,
         scoutingBudget: s.scoutingBudget,
         history: s.history,
+        targets: s.targets,
       }),
-      // Datos guardados antes de que existieran los filiales: se completan las fuentes fijas.
-      merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<AppState>;
-        const squads = p.squads?.length ? p.squads : DEFAULT_SQUADS;
-        return { ...current, ...p, squads, players: { plantilla: [], ojeados: [], ...(p.players ?? {}) }, imports: { plantilla: null, ojeados: null, ...(p.imports ?? {}) } };
-      },
+      // Datos guardados antes de que existieran los filiales o la liga: se completan las fuentes fijas.
+      merge: (persisted, current) => ({ ...current, ...normalizePersisted((persisted ?? {}) as Partial<PersistedState>) }),
       onRehydrateStorage: () => (state) => {
         state?.markHydrated();
       },
     },
   ),
 );
+
+/** Estado que se persiste (y que exporta la copia de seguridad). */
+export type PersistedState = Pick<AppState, "players" | "imports" | "squads" | "headerOverrides" | "clubName" | "tactics" | "activeTacticId" | "playerTraits" | "trainingWeek" | "scoutingBudget" | "history" | "targets">;
+
+/** Completa fuentes fijas y campos nuevos en datos guardados por versiones anteriores. */
+function normalizePersisted(p: Partial<PersistedState>): Partial<PersistedState> {
+  const squads = [...(p.squads?.length ? p.squads : DEFAULT_SQUADS)];
+  for (const d of DEFAULT_SQUADS) if (!squads.some((q) => q.id === d.id)) squads.push(d);
+  const players: Record<string, Player[]> = { ...(p.players ?? {}) };
+  const imports: Record<string, ImportMeta | null> = { ...(p.imports ?? {}) };
+  for (const q of squads) { players[q.id] ??= []; imports[q.id] ??= null; }
+  return { ...p, squads, players, imports, history: p.history ?? {}, targets: p.targets ?? {} };
+}
 
 function mostCommonClub(players: Player[]): string | null {
   const counts = new Map<string, number>();

@@ -81,5 +81,7 @@ reglas del motor.
 `refs/` (ignorado por git) contiene repositorios de la comunidad usados como
 referencia: FM24-Player-Analyzer (GPL-3), pyscoutfm (MIT), fm_player_ranking.
 Ideas tomadas de otros proyectos: evolución entre exportaciones (fm-dash
-"Progression", FM24-Player-Analyzer), explorador de formaciones
-(FM24-Player-Analyzer) y detección de gangas (fm-dash "bargain hunter").
+"Progression", FM24-Player-Analyzer), explorador de formaciones y radiografía
+de plantilla (FM24-Player-Analyzer), gangas, seguimiento de objetivos y
+comparación de jugadores (fm-dash). La fuente «Liga» (exportación de todos los
+jugadores de la competición) da percentiles por familia de posición.

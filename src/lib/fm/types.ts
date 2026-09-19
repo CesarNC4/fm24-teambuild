@@ -96,7 +96,7 @@ export type ImportSource = string;
 export interface Squad {
   id: ImportSource;
   name: string;
-  kind: "primer" | "filial" | "ojeados";
+  kind: "primer" | "filial" | "ojeados" | "liga";
   /** Edad máxima del filial (Sub-18 → 18, Sub-21 → 21). null = sin límite (equipo B). */
   maxAge: number | null;
   /** true si juega una liga competitiva de verdad (equipo B), no liga juvenil. */

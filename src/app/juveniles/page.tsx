@@ -7,7 +7,8 @@ import { POSITION_LABEL, ROLE_BY_ID, roleLabel } from "@/lib/fm/roles";
 import { TIER_LABEL, type PersonalityTierLevel } from "@/lib/fm/personalities";
 import { DESTINATION_LABEL, LOAN_LABEL, assessAllYouth, positionCoverage, type Destination, type YouthAssessment } from "@/lib/fm/youth";
 import { useAppStore } from "@/lib/store";
-import { developmentVerdict, formatDeltas, progressSince, type History } from "@/lib/fm/history";
+import { developmentVerdict, formatDeltas, monthsUntilAgeLimit, progressSince, projectAttr, type History } from "@/lib/fm/history";
+import { estimateGameYear } from "@/lib/fm/youth";
 import { ScoreBadge } from "@/components/AttrCell";
 
 const DEST_CLASS: Record<Destination, string> = {
@@ -31,6 +32,7 @@ export default function YouthPage() {
   const tactic = tactics.find((t) => t.id === activeTacticId) ?? tactics[0] ?? null;
   const filiales = squads.filter((q) => q.kind === "filial");
   const all = useMemo(() => assessAllYouth(players, squads, tactic), [players, squads, tactic]);
+  const gameYear = useMemo(() => estimateGameYear(players.plantilla ?? []), [players.plantilla]);
   const list = filter === "todos" ? all : all.filter((a) => (filter === "alertas" ? a.alerts.length > 0 : a.squad?.id === filter));
   const coverage = useMemo(() => positionCoverage(all), [all]);
 
@@ -49,7 +51,7 @@ export default function YouthPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Juveniles</h1>
         <div className="flex gap-1 text-sm flex-wrap">
-          {[{ id: "todos", name: "Todos" }, ...squads.filter((q) => q.kind !== "ojeados").map((q) => ({ id: q.id, name: q.name })), { id: "alertas", name: "Con alertas" }].map((f) => (
+          {[{ id: "todos", name: "Todos" }, ...squads.filter((q) => q.kind === "primer" || q.kind === "filial").map((q) => ({ id: q.id, name: q.name })), { id: "alertas", name: "Con alertas" }].map((f) => (
             <button key={f.id} onClick={() => setFilter(f.id)} className={`px-3 py-1 rounded border ${filter === f.id ? "bg-accent text-accent-fg border-accent" : "border-border hover:bg-surface-2"}`}>
               {f.name}
             </button>
@@ -84,7 +86,7 @@ export default function YouthPage() {
                   const p = a.player;
                   const isOpen = open === p.uid;
                   return (
-                    <Row key={p.uid} a={a} history={history} isOpen={isOpen} toggle={() => setOpen(isOpen ? null : p.uid)} />
+                    <Row key={p.uid} a={a} history={history} gameYear={gameYear} isOpen={isOpen} toggle={() => setOpen(isOpen ? null : p.uid)} />
                   );
                 })}
               </tbody>
@@ -124,8 +126,10 @@ export default function YouthPage() {
   );
 }
 
-function Row({ a, history, isOpen, toggle }: { a: YouthAssessment; history: History; isOpen: boolean; toggle: () => void }) {
+function Row({ a, history, gameYear, isOpen, toggle }: { a: YouthAssessment; history: History; gameYear: number | null; isOpen: boolean; toggle: () => void }) {
   const p = a.player;
+  const monthsLeft = monthsUntilAgeLimit(p.birthDate, p.age, a.squad?.kind === "filial" ? a.squad.maxAge : null, gameYear);
+  const objectives = (a.training.focus[0]?.detail ?? []).filter((d) => d.have != null && d.have < d.target).map((d) => projectAttr(history, p.uid, d.key, d.target)).filter((x): x is NonNullable<typeof x> => !!x);
   const tier = a.personalityTier as PersonalityTierLevel;
   const prog = progressSince(history, p.uid);
   const dev = developmentVerdict(prog, p.age);
@@ -194,6 +198,20 @@ function Row({ a, history, isOpen, toggle }: { a: YouthAssessment; history: Hist
                 <p className={devClass}>{dev.label}</p>
                 {prog && prog.deltas.length > 0 && <p className="text-muted">{formatDeltas(prog.deltas, 14)}</p>}
                 {prog && prog.deltas.length === 0 && <p className="text-muted">Sin cambios de atributos entre las dos últimas exportaciones.</p>}
+                {objectives.length > 0 && (
+                  <>
+                    <div className="font-medium mt-2 mb-1">Objetivos del foco{monthsLeft != null ? ` (${monthsLeft} meses hasta salir del ${a.squad?.name})` : ""}</div>
+                    {objectives.map((o) => (
+                      <p key={o.key} className={o.monthsToTarget != null && monthsLeft != null && o.monthsToTarget > monthsLeft ? "text-attr-mid" : ""}>
+                        {ATTR_BY_KEY[o.key].es} {o.have} → {o.target}
+                        {o.ratePerQuarter == null ? <span className="text-muted"> · sin ritmo aún (hace falta otra exportación ≥30 días después)</span>
+                          : o.monthsToTarget == null ? <span className="text-attr-low"> · no sube ({o.ratePerQuarter.toFixed(1)}/trimestre)</span>
+                          : o.monthsToTarget === 0 ? <span className="text-attr-good"> · conseguido</span>
+                          : <span> · {o.ratePerQuarter.toFixed(1)}/trimestre → {o.monthsToTarget} meses{monthsLeft != null && o.monthsToTarget > monthsLeft ? " (no llega antes de agotar la edad del filial)" : ""}</span>}
+                      </p>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
           </td>

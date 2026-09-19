@@ -94,3 +94,49 @@ export function developmentVerdict(p: Progress | null, age: number | null): { la
   if (young && p.days >= 75) return { label: `estancado (${p.net >= 0 ? "+" : ""}${p.net} en ${p.days} d): revisa minutos y entrenamiento`, tone: "mid" };
   return { label: `${p.net >= 0 ? "+" : ""}${p.net} en ${p.days} d`, tone: "na" };
 }
+
+// ---------------------------------------------------------------------------
+// Proyección de objetivos de desarrollo
+// ---------------------------------------------------------------------------
+
+export interface AttrProjection {
+  key: AttrKey;
+  have: number;
+  target: number;
+  /** Puntos por trimestre observados (null si no hay historial suficiente). */
+  ratePerQuarter: number | null;
+  /** Meses estimados hasta el objetivo (null si no hay ritmo o ya está). */
+  monthsToTarget: number | null;
+}
+
+/**
+ * Ritmo de mejora de un atributo entre la primera y la última foto (mínimo 30
+ * días entre ambas) y meses que faltan para llegar al objetivo a ese ritmo.
+ */
+export function projectAttr(history: History, uid: string, key: AttrKey, target: number): AttrProjection | null {
+  const h = history[uid];
+  if (!h?.length) return null;
+  const last = h[h.length - 1];
+  const have = last.attrs[key];
+  if (have == null) return null;
+  const first = h.find((s) => s.attrs[key] != null) ?? last;
+  const days = (new Date(last.at).getTime() - new Date(first.at).getTime()) / 86_400_000;
+  let ratePerQuarter: number | null = null;
+  if (days >= 30 && first !== last) ratePerQuarter = ((have - (first.attrs[key] ?? have)) / days) * 90;
+  const remaining = target - have;
+  let monthsToTarget: number | null = null;
+  if (remaining <= 0) monthsToTarget = 0;
+  else if (ratePerQuarter != null && ratePerQuarter > 0) monthsToTarget = Math.round((remaining / ratePerQuarter) * 3);
+  return { key, have, target, ratePerQuarter, monthsToTarget };
+}
+
+/** Meses hasta que el jugador supere la edad máxima de su filial (null si no aplica). */
+export function monthsUntilAgeLimit(birthDate: string | null, age: number | null, maxAge: number | null, gameYear: number | null): number | null {
+  if (maxAge == null || age == null) return null;
+  const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(birthDate ?? "");
+  if (!m || gameYear == null) return Math.max(0, (maxAge + 1 - age) * 12);
+  // Cumple maxAge+1 el día de su cumpleaños de ese año; la temporada actual termina el 30/6 de gameYear.
+  const limit = new Date(Number(m[3]) + maxAge + 1, Number(m[2]) - 1, Number(m[1]));
+  const now = new Date(gameYear, 0, 1);
+  return Math.max(0, Math.round((limit.getTime() - now.getTime()) / (30.4 * 86_400_000)));
+}
