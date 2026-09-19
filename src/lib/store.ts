@@ -32,7 +32,7 @@ interface AppState {
   /** uid → ids de rasgos que tiene el jugador (entrada manual). */
   playerTraits: Record<string, string[]>;
   /** Opciones del calendario semanal de entrenamiento. */
-  trainingWeek: { matchDays: number[]; preseason: boolean };
+  trainingWeek: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number };
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
@@ -44,7 +44,7 @@ interface AppState {
   removeTactic: (id: string) => void;
   setActiveTactic: (id: string | null) => void;
   setPlayerTraits: (uid: string, traitIds: string[]) => void;
-  setTrainingWeek: (w: { matchDays: number[]; preseason: boolean }) => void;
+  setTrainingWeek: (w: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number }) => void;
 }
 
 export const useAppStore = create<AppState>()(

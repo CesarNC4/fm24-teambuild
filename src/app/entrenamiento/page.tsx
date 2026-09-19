@@ -7,7 +7,8 @@ import { ROLE_BY_ID, roleLabel, type RoleDef } from "@/lib/fm/roles";
 import { bestRoles } from "@/lib/fm/scoring";
 import { buildLineup } from "@/lib/fm/tactics";
 import { STYLE_BY_ID } from "@/lib/fm/instructions";
-import { DAY_LABEL, SESSION_BY_ID, UNIT_LABEL, buildWeek, personalityTier, recommendFocus, recommendIntensity, suggestMentoring, type SessionCategory } from "@/lib/fm/training";
+import { DAY_LABEL, SESSION_BY_ID, UNIT_LABEL, WEEK_GOAL_LABEL, buildWeek, personalityTier, recommendFocus, recommendLoad, suggestMentoring, suggestTalks, type SessionCategory, type WeekGoal } from "@/lib/fm/training";
+import { HIDDEN_LABEL, TIER_LABEL, findMediaStyles, findPersonality, hiddenProfile, personalityTierLevel, type HiddenKey } from "@/lib/fm/personalities";
 import { useAppStore } from "@/lib/store";
 
 const CAT_CLASS: Record<SessionCategory | "match", string> = {
@@ -21,7 +22,7 @@ const CAT_CLASS: Record<SessionCategory | "match", string> = {
   match: "bg-accent text-accent-fg font-semibold",
 };
 
-type Tab = "individual" | "semana" | "tutoria";
+type Tab = "individual" | "semana" | "tutoria" | "personalidad";
 
 export default function TrainingPage() {
   const players = useAppStore((s) => s.players.plantilla);
@@ -47,14 +48,25 @@ export default function TrainingPage() {
         .map((p) => {
           const role = tacticRole.get(p.uid) ?? (bestRoles(p, 1)[0] ? ROLE_BY_ID[bestRoles(p, 1)[0].roleId] : null);
           const focus = role ? recommendFocus(p, role) : [];
-          return { p, role, focus, intensity: recommendIntensity(p), starter: tacticRole.has(p.uid) };
+          return { p, role, focus, load: recommendLoad(p), starter: tacticRole.has(p.uid) };
         })
         .sort((a, b) => (a.p.age ?? 99) - (b.p.age ?? 99)),
     [players, tacticRole],
   );
 
-  const plan = useMemo(() => buildWeek({ styleId: tactic?.styleId ?? null, matchDays: week.matchDays, preseason: week.preseason }), [tactic?.styleId, week]);
+  const plan = useMemo(
+    () => buildWeek({ styleId: tactic?.styleId ?? null, matchDays: week.matchDays, preseason: week.preseason, goal: (week.goal as WeekGoal) ?? "normal", weekIndex: week.weekIndex ?? 0 }),
+    [tactic?.styleId, week],
+  );
   const mentoring = useMemo(() => suggestMentoring(players), [players]);
+  const talks = useMemo(() => suggestTalks(players), [players]);
+  const personalities = useMemo(
+    () =>
+      players
+        .map((p) => ({ p, def: findPersonality(p.personality), media: findMediaStyles(p.mediaHandling), hidden: hiddenProfile(p), tier: personalityTierLevel(p.personality) }))
+        .sort((a, b) => b.tier - a.tier || (a.p.age ?? 0) - (b.p.age ?? 0)),
+    [players],
+  );
 
   if (hydrated && players.length === 0) {
     return (
@@ -75,9 +87,9 @@ export default function TrainingPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Entrenamiento</h1>
         <div className="flex gap-1 text-sm">
-          {(["individual", "semana", "tutoria"] as Tab[]).map((t) => (
+          {(["individual", "semana", "tutoria", "personalidad"] as Tab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)} className={`px-3 py-1 rounded border ${tab === t ? "bg-accent text-accent-fg border-accent" : "border-border hover:bg-surface-2"}`}>
-              {t === "individual" ? "Individual" : t === "semana" ? "Semana de equipo" : "Tutorías"}
+              {t === "individual" ? "Individual" : t === "semana" ? "Semana de equipo" : t === "tutoria" ? "Tutorías" : "Personalidad y charlas"}
             </button>
           ))}
         </div>
@@ -93,10 +105,10 @@ export default function TrainingPage() {
           <div className="overflow-auto border border-border rounded-md">
             <table className="tbl w-full">
               <thead>
-                <tr><th>Jugador</th><th className="num">Edad</th><th>Rol a entrenar</th><th>Foco adicional</th><th>Alternativa</th><th>Intensidad</th></tr>
+                <tr><th>Jugador</th><th className="num">Edad</th><th>Rol a entrenar</th><th>Foco adicional</th><th>Alternativa</th><th>Extras</th></tr>
               </thead>
               <tbody>
-                {individual.map(({ p, role, focus, intensity, starter }) => (
+                {individual.map(({ p, role, focus, load, starter }) => (
                   <tr key={p.uid} className={starter ? "" : "opacity-75"}>
                     <td className="font-medium">{p.name}</td>
                     <td className="num">{p.age ?? "–"}</td>
@@ -119,15 +131,20 @@ export default function TrainingPage() {
                         </td>
                       );
                     })}
-                    <td className="text-xs" title={intensity.why}>
-                      <span className={intensity.level === "doble" ? "text-attr-good" : intensity.level === "media" ? "text-attr-mid" : ""}>{intensity.level}</span>
+                    <td className="text-xs" title={load.why}>
+                      <span className={load.extras === 2 ? "text-attr-good" : load.extras === 0 ? "text-attr-low" : "text-attr-mid"}>
+                        {load.extras === 2 ? "foco + rasgo" : load.extras === 1 ? "solo uno" : "ninguno"}
+                      </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-muted">* nota sobre la edad en el tooltip. Intensidad: doble para ≤23 con buena forma física natural; media para ≥31 o forma física natural baja.</p>
+          <p className="text-xs text-muted">
+            * nota sobre la edad en el tooltip. <b>Extras</b>: cuántas cosas además del rol (foco adicional, rasgo, pie débil) aguanta sin que la intensidad total pase de <i>Media</i>.
+            Deja la intensidad individual en <i>Automática</i>; si el juego marca <i>Alta</i>, quita un extra. En el juego asigna a cada jugador rol y deber concretos, no «posición de juego».
+          </p>
         </section>
       )}
 
@@ -142,6 +159,15 @@ export default function TrainingPage() {
             ))}
             <label className="flex items-center gap-1 cursor-pointer ml-4">
               <input type="checkbox" checked={week.preseason} onChange={(e) => setWeek({ ...week, preseason: e.target.checked })} /> Pretemporada
+            </label>
+            <select className="bg-surface border border-border rounded px-2 py-1" value={week.goal ?? "normal"} onChange={(e) => setWeek({ ...week, goal: e.target.value })}>
+              {(Object.keys(WEEK_GOAL_LABEL) as WeekGoal[]).map((g) => <option key={g} value={g}>{WEEK_GOAL_LABEL[g]}</option>)}
+            </select>
+            <label className="flex items-center gap-1">
+              Semana
+              <button className="px-1.5 rounded border border-border hover:bg-surface-2" onClick={() => setWeek({ ...week, weekIndex: Math.max(0, (week.weekIndex ?? 0) - 1) })}>−</button>
+              <span className="w-4 text-center">{(week.weekIndex ?? 0) + 1}</span>
+              <button className="px-1.5 rounded border border-border hover:bg-surface-2" onClick={() => setWeek({ ...week, weekIndex: (week.weekIndex ?? 0) + 1 })}>+</button>
             </label>
           </div>
           <div className="grid grid-cols-7 gap-1.5">
@@ -164,8 +190,63 @@ export default function TrainingPage() {
             ))}
           </div>
           <div className="text-xs text-muted space-y-1">
-            <p>Reglas: previa el día antes del partido; recuperación + análisis el día después; máximo dos sesiones físicas y nunca la víspera; con dos partidos se aligera; en pretemporada se carga físico y cohesión.</p>
+            <p>
+              Reglas (guías de jonasmorais y Passion4FM): recuperación + análisis el día después del partido; la carga sube dos días después y baja hacia el siguiente, alternando días fuertes y ligeros;
+              físico nunca la víspera ni entre dos partidos; previa el día anterior. La sesión ofensiva de mitad de semana y la defensiva del final rotan al cambiar el número de semana.
+              Con dos partidos, si usaste a los 22 jugadores cambia el «Descanso» del día siguiente por otra «Recuperación». Pretemporada sin partidos marcados = semanas 1-2 (solo físico y cohesión).
+            </p>
             <p>Las sesiones de ataque/defensa/físico son las del estilo de la táctica activa{tactic?.styleId ? ` (${STYLE_BY_ID[tactic.styleId].name})` : " (sin estilo: genéricas)"}. Los nombres en inglés (tooltip) son los del juego.</p>
+          </div>
+        </section>
+      )}
+
+      {tab === "personalidad" && (
+        <section className="space-y-4">
+          <div className="grid lg:grid-cols-[1fr_320px] gap-4">
+            <div className="space-y-2">
+              <p className="text-xs text-muted">
+                Cada personalidad fija rangos de atributos ocultos (guía de FM Scout). El trato con la prensa acota otros: <i>Evasivo</i> o <i>Reservado</i> esconden profesionalidad ≥15 aunque la personalidad sea neutra.
+                Los menores de 24 años absorben la personalidad del vestuario y de sus mentores.
+              </p>
+              <div className="overflow-auto border border-border rounded-md">
+                <table className="tbl w-full">
+                  <thead>
+                    <tr><th>Jugador</th><th className="num">Edad</th><th>Personalidad</th><th>Nivel</th><th>Prensa</th><th>Ocultos (rango)</th></tr>
+                  </thead>
+                  <tbody>
+                    {personalities.map(({ p, def, media, hidden, tier }) => (
+                      <tr key={p.uid}>
+                        <td className="font-medium">{p.name}</td>
+                        <td className="num">{p.age ?? "–"}</td>
+                        <td className="text-xs" title={def?.note}>{p.personality ?? "—"}{!def && p.personality && <span className="text-attr-mid" title="No está en el catálogo; avísame para añadirla"> ?</span>}</td>
+                        <td className={`text-xs ${tier >= 6 ? "text-attr-elite" : tier === 5 ? "text-attr-good" : tier <= 1 ? "text-attr-low" : tier === 2 ? "text-attr-mid" : "text-muted"}`}>{TIER_LABEL[tier]}</td>
+                        <td className="text-xs" title={media.map((m) => `${m.es}: ${m.note}`).join("\n")}>{media.length ? media.map((m) => m.es).join(", ") : p.mediaHandling ?? "—"}</td>
+                        <td className="text-xs text-muted">
+                          {(Object.entries(hidden) as [HiddenKey, [number, number]][]).map(([k, [lo, hi]]) => (
+                            <span key={k} className={`inline-block mr-1.5 ${lo >= 15 ? "text-attr-good" : hi <= 10 ? "text-attr-low" : ""}`} title={HIDDEN_LABEL[k]}>{k} {lo === hi ? lo : `${lo}-${hi}`}</span>
+                          ))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted">Ocultos: Amb ambición · Det determinación · Loy lealtad · Pre presión · Pro profesionalidad · Spo deportividad · Tem temperamento · Ctr polémica. Verde ≥15, rojo ≤10.</p>
+            </div>
+            <div className="bg-surface border border-border rounded-lg p-3 text-sm space-y-2 self-start">
+              <h3 className="font-medium">Charlas del mes</h3>
+              <p className="text-xs text-muted">Una vez al mes: elogia la media ≥7,5 y critica la ≤6,5 (guía de jonasmorais). Se usa la media de la exportación.</p>
+              {talks.length === 0 && <p className="text-xs text-muted">Sin medias en la exportación o todas entre 6,5 y 7,5.</p>}
+              {talks.map((t) => (
+                <div key={t.player.uid} className="text-xs flex items-start gap-2">
+                  <span className={t.kind === "elogio" ? "text-attr-good" : "text-attr-low"}>{t.kind === "elogio" ? "▲" : "▼"}</span>
+                  <span className="flex-1">
+                    {t.player.name} <span className="text-muted">{t.rating.toFixed(2)}</span>
+                    {t.caution && <div className="text-attr-mid">{t.caution}</div>}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}
@@ -173,8 +254,8 @@ export default function TrainingPage() {
       {tab === "tutoria" && (
         <section className="space-y-3">
           <p className="text-xs text-muted">
-            Mentores: ≥24 años, personalidad buena y Determinación o Liderazgo ≥14. Aprendices: ≤23 años con personalidad mejorable o Determinación &lt;12.
-            Agrupados por unidad; en el juego crea un grupo por unidad con 1-2 mentores y 2-4 aprendices.
+            Mentores: ≥24 años, personalidad buena o mejor y Determinación o Liderazgo ≥14 (hasta tres por unidad, ordenados por personalidad). Aprendices: ≤23 años con personalidad por debajo de buena o Determinación &lt;12.
+            La guía recomienda tres mentores en el primer equipo (uno por línea); aquí van agrupados por unidad para que compartan sesiones. Los ambiciosos quedan fuera: contagian lealtad baja.
           </p>
           {mentoring.length === 0 && <p className="text-sm text-muted">No hay aprendices que necesiten tutoría.</p>}
           <div className="grid md:grid-cols-2 gap-3">
@@ -186,7 +267,7 @@ export default function TrainingPage() {
                     <div className="text-muted mb-1">Mentores</div>
                     {g.mentors.length === 0 && <div className="text-attr-mid">Ninguno válido en esta unidad: usa uno de otra unidad o ficha un veterano con buena personalidad.</div>}
                     {g.mentors.map((p) => (
-                      <div key={p.uid}>{p.name} <span className="text-muted">{p.age} · {p.personality} · Det {p.attrs.Det?.value} Lid {p.attrs.Ldr?.value}</span></div>
+                      <div key={p.uid}>{p.name} <span className="text-muted">{p.age} · {p.personality} ({TIER_LABEL[personalityTierLevel(p.personality)]}) · Det {p.attrs.Det?.value} Lid {p.attrs.Ldr?.value}</span></div>
                     ))}
                   </div>
                   <div>
@@ -198,6 +279,7 @@ export default function TrainingPage() {
                     ))}
                   </div>
                 </div>
+                {g.notes.length > 0 && <div className="mt-2 text-xs text-attr-mid space-y-0.5">{g.notes.map((n, i) => <div key={i}>{n}</div>)}</div>}
               </div>
             ))}
           </div>

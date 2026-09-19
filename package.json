@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "check:import": "tsx scripts/check-import.ts",
-    "check:tactic": "tsx scripts/check-tactic.ts"
+    "check:tactic": "tsx scripts/check-tactic.ts",
+    "check:training": "tsx scripts/check-training.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",

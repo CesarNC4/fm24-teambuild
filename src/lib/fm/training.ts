@@ -5,6 +5,7 @@
 import type { AttrKey } from "./attributes";
 import type { RoleDef } from "./roles";
 import type { Player } from "./types";
+import { personalityTierLevel } from "./personalities";
 
 // ===========================================================================
 // Foco individual
@@ -89,20 +90,33 @@ export function recommendFocus(player: Player, role: RoleDef): FocusRecommendati
       else if (area.physical && age >= 27) { deficit *= 0.5; note = "físico a los 27+: mejora lenta"; }
       else if (area.physical && age <= 21) { deficit *= 1.3; note = "físico con ≤21 años: la mejor edad para desarrollarlo"; }
       else if (!area.physical && age >= 32) { deficit *= 0.7; note = "a los 32+ la mejora técnica/mental es lenta"; }
+      // Los mentales son los que más tardan en subir (físicos > técnicos > mentales).
+      else if (area.id === "final-third") { deficit *= 0.85; note = "área mental: la mejora es la más lenta de todas"; }
       return { area, deficit, detail, note };
     })
     .filter((r) => r.detail.length > 0 && r.deficit > 0)
     .sort((a, b) => b.deficit - a.deficit);
 }
 
-/** Intensidad recomendada de entrenamiento individual. */
-export function recommendIntensity(player: Player): { level: "doble" | "normal" | "media"; why: string } {
+/**
+ * Carga individual recomendada. La regla de la guía de entrenamiento es que la
+ * intensidad individual se deje en "Automática" y que la carga total (foco
+ * adicional + rasgo + pie débil) no pase de "Media": si el juego la marca en
+ * Alta, se quita algo. Aquí se estima cuántos extras aguanta cada jugador.
+ */
+export interface LoadRecommendation {
+  /** Extras simultáneos (foco adicional, rasgo, pie débil) que aguanta sin pasar de Media. */
+  extras: 0 | 1 | 2;
+  why: string;
+}
+
+export function recommendLoad(player: Player): LoadRecommendation {
   const age = player.age ?? 25;
   const nat = player.attrs.Nat?.value ?? 12;
-  if (age >= 30 && nat <= 10) return { level: "media", why: "30+ con forma física natural baja: los físicos caen rápido; prioriza recuperación" };
-  if (age <= 23 && nat >= 12) return { level: "doble", why: "joven con buena forma física natural: desarrolla más rápido" };
-  if (age >= 31 || nat <= 8) return { level: "media", why: age >= 31 ? "veterano: reduce riesgo de lesión y fatiga" : "forma física natural baja" };
-  return { level: "normal", why: "edad y forma física estándar" };
+  if (age >= 33 || nat <= 7) return { extras: 0, why: `${age >= 33 ? "veterano" : "forma física natural muy baja"}: solo entrenamiento de rol, nada extra` };
+  if (age >= 30 || nat <= 10) return { extras: 1, why: age >= 30 ? "30+: un solo extra (foco o rasgo), el resto es riesgo de lesión" : "forma física natural baja: un solo extra" };
+  if (age <= 23 && nat >= 14) return { extras: 2, why: "joven y con buena forma física natural: foco + rasgo sin pasar de Media" };
+  return { extras: 2, why: "carga normal: foco + rasgo, pero vigila que la intensidad total no marque Alta" };
 }
 
 // ===========================================================================
@@ -176,30 +190,62 @@ export interface DayPlan {
   sessions: (string | null)[];
 }
 
+export type WeekGoal = "normal" | "cohesion" | "defensa" | "ataque";
+export const WEEK_GOAL_LABEL: Record<WeekGoal, string> = {
+  normal: "Normal (estilo de la táctica)",
+  cohesion: "Cohesión (fichajes nuevos / vestuario)",
+  defensa: "Cerrar la portería",
+  ataque: "Crear y marcar más",
+};
+
 export interface WeekOptions {
   styleId: string | null;
   /** Días con partido (0 = lunes … 6 = domingo). */
   matchDays: number[];
   preseason: boolean;
+  /** Objetivo de la semana (schedules de escenario de Passion4FM). */
+  goal?: WeekGoal;
+  /** Número de semana para rotar las sesiones de ataque/defensa (guía de jonasmorais). */
+  weekIndex?: number;
 }
 
+/** Sesiones de los escenarios "Shut up shop" y "Chance creation" del megapack. */
+const GOAL_SESSIONS: Record<Exclude<WeekGoal, "normal">, { attack: string[]; defend: string[] }> = {
+  cohesion: { attack: ["teamwork", "att-movement", "team-bonding", "ball-retention"], defend: ["def-shape", "teamwork", "team-bonding", "def-shadow"] },
+  defensa: { attack: ["transition-restrict", "att-direct", "chance-conversion", "sp-attacking"], defend: ["def-shape", "def-disengaged", "def-wide", "def-shadow"] },
+  ataque: { attack: ["chance-creation", "chance-conversion", "att-movement", "att-shadow"], defend: ["transition-press", "def-front", "sp-defending", "def-shape"] },
+};
+
 /**
- * Genera una semana siguiendo las reglas habituales: previa el día anterior al
- * partido, análisis + recuperación el día siguiente, físico solo lejos de
- * partidos, y sesiones de ataque/defensa/técnica del estilo en los días
- * intermedios. Con dos partidos se aligera; en pretemporada se carga físico.
+ * Genera una semana con las reglas de las guías de entrenamiento:
+ * - día después del partido: recuperación + análisis (y descanso si hay dos partidos);
+ * - la carga sube dos días después del partido y baja hacia el siguiente;
+ * - días alternos fuerte/ligero, físico nunca la víspera ni con dos partidos;
+ * - la sesión de ataque de mitad de semana y la defensiva del final rotan
+ *   entre semanas; previa el día anterior;
+ * - pretemporada sin partidos = física pura; con partidos = física + táctica.
  */
 export function buildWeek(opts: WeekOptions): DayPlan[] {
-  const st = STYLE_SESSIONS[opts.styleId ?? "default"] ?? STYLE_SESSIONS.default;
+  const goal = opts.goal ?? "normal";
+  const base = STYLE_SESSIONS[opts.styleId ?? "default"] ?? STYLE_SESSIONS.default;
+  const st = goal === "normal" ? base : { ...base, ...GOAL_SESSIONS[goal] };
+  const wk = opts.weekIndex ?? 0;
   const matchSet = new Set(opts.matchDays);
   const days: DayPlan[] = Array.from({ length: 7 }, (_, d) => ({ day: d, isMatch: matchSet.has(d), sessions: [null, null, null] }));
   const prevMatch = (d: number) => matchSet.has((d + 6) % 7);
   const nextMatch = (d: number) => matchSet.has((d + 1) % 7);
   const twoMatches = opts.matchDays.length >= 2;
+  const noMatches = opts.matchDays.length === 0;
 
-  // Contadores para repartir sesiones sin repetir en la semana
-  let ai = 0, di = 0, pi = 0;
+  // Rotación entre semanas: cada semana empieza en una sesión distinta de la lista
+  let ai = wk, di = wk, pi = 0;
   const next = (arr: string[], i: number) => arr[i % arr.length];
+  /** Días desde el último partido (1 = día siguiente). 0 si no hay partidos. */
+  const sinceMatch = (d: number) => {
+    if (noMatches) return 0;
+    for (let k = 1; k <= 7; k++) if (matchSet.has((d - k + 7) % 7)) return k;
+    return 0;
+  };
 
   for (const day of days) {
     if (day.isMatch) { day.sessions = ["match", null, null]; continue; }
@@ -207,6 +253,13 @@ export function buildWeek(opts: WeekOptions): DayPlan[] {
     const before = nextMatch(day.day);
 
     if (opts.preseason) {
+      if (noMatches) {
+        // Semanas 1-2 de pretemporada: solo condición física y cohesión
+        const phys = ["endurance", "resistance", "quickness", "physical"];
+        if (day.day === 6) { day.sessions = ["rest", null, null]; continue; }
+        day.sessions = [next(phys, pi++), day.day % 2 === 0 ? "team-bonding" : "ball-retention", day.day % 2 === 0 ? next(phys, pi++) : "teamwork"];
+        continue;
+      }
       if (before) { day.sessions = ["match-preview", "team-bonding", null]; continue; }
       if (after) { day.sessions = ["recovery", "match-review", null]; continue; }
       const third = ["team-bonding", "tactical", "match-practice"][day.day % 3];
@@ -214,26 +267,65 @@ export function buildWeek(opts: WeekOptions): DayPlan[] {
       continue;
     }
     if (after && before) { day.sessions = ["recovery", "match-review", "match-preview"]; continue; }
-    if (after) { day.sessions = ["recovery", "match-review", twoMatches ? null : "sp-defending"]; continue; }
-    if (before) { day.sessions = ["match-preview", "sp-attacking", twoMatches ? "rest" : null]; continue; }
+    if (after) { day.sessions = ["recovery", "match-review", twoMatches ? "rest" : null]; continue; }
+    if (before) { day.sessions = ["match-preview", twoMatches ? "rest" : goal === "defensa" ? "sp-defending" : "sp-attacking", null]; continue; }
 
     if (twoMatches) {
-      day.sessions = [next(st.attack, ai++), "rest", null];
+      // Entre partidos: una sesión táctica y descanso; sin físico
+      day.sessions = [sinceMatch(day.day) === 2 ? next(st.attack, ai++) : next(st.defend, di++), "rest", null];
+      continue;
+    }
+    const k = sinceMatch(day.day);
+    if (noMatches) {
+      // Parón: desarrollo puro alternando ataque/defensa, físico dos veces
+      day.sessions = day.day % 2 === 0
+        ? [next(st.attack, ai++), pi < 2 ? next(st.physical, pi++) : "teamwork", null]
+        : [next(st.defend, di++), "ball-retention", null];
+    } else if (k === 2) {
+      // Pico de carga: físico + sesión del estilo
+      day.sessions = [next(st.physical, pi++), next(st.attack, ai++), "teamwork"];
+    } else if (nextMatch((day.day + 1) % 7)) {
+      // Dos días antes del partido: sesión defensiva rotatoria y ligero
+      day.sessions = [next(st.defend, di++), "rest", null];
+    } else if (k % 2 === 1) {
+      // Día ligero
+      day.sessions = [next(st.attack, ai++), goal === "cohesion" ? "team-bonding" : "rest", null];
     } else {
-      // Máximo dos sesiones físicas por semana y nunca a dos días del partido.
-      const slot: (string | null)[] = [next(st.attack, ai++), next(st.defend, di++), null];
-      if (nextMatch((day.day + 1) % 7)) slot[2] = "rest";
-      else if (pi < 2) slot[2] = next(st.physical, pi++);
-      else slot[2] = "teamwork";
-      day.sessions = slot;
+      day.sessions = [next(st.defend, di++), pi < 2 ? next(st.physical, pi++) : "ball-retention", null];
     }
   }
-  // Un día de descanso completo si no hay partido entre semana
-  if (!twoMatches && !opts.preseason) {
-    const free = days.find((d) => !d.isMatch && !prevMatch(d.day) && !nextMatch(d.day) && d.day === 6);
-    if (free) free.sessions = ["rest", null, null];
+  if (noMatches && !opts.preseason) {
+    // Semana sin partidos (parón): desarrollo puro, un descanso el domingo
+    days[6].sessions = ["rest", null, null];
+    days[0].sessions = ["recovery", "match-review", null];
   }
   return days;
+}
+
+// ===========================================================================
+// Charlas: elogios y críticas mensuales por rendimiento (guía de jonasmorais)
+// ===========================================================================
+
+export interface TalkSuggestion {
+  player: Player;
+  kind: "elogio" | "critica";
+  rating: number;
+  /** Aviso cuando la personalidad aconseja no criticar. */
+  caution?: string;
+}
+
+export function suggestTalks(players: Player[]): TalkSuggestion[] {
+  const out: TalkSuggestion[] = [];
+  for (const p of players) {
+    if (p.avgRating == null) continue;
+    if (p.avgRating >= 7.5) out.push({ player: p, kind: "elogio", rating: p.avgRating });
+    else if (p.avgRating <= 6.5) {
+      const tier = personalityTierLevel(p.personality);
+      const fragile = /confianza|desanima|agallas|temperamental|provocar|irascible|vol[aá]til/i.test(`${p.personality ?? ""} ${p.mediaHandling ?? ""}`);
+      out.push({ player: p, kind: "critica", rating: p.avgRating, caution: fragile ? "personalidad frágil: critica en privado o no critiques" : tier <= 1 ? "personalidad mala: puede reaccionar mal" : undefined });
+    }
+  }
+  return out.sort((a, b) => (a.kind === b.kind ? b.rating - a.rating : a.kind === "elogio" ? -1 : 1));
 }
 
 // ===========================================================================
@@ -242,13 +334,11 @@ export function buildWeek(opts: WeekOptions): DayPlan[] {
 
 export type PersonalityTier = "buena" | "neutra" | "mala";
 
-const GOOD_RE = /profesional|perfeccionista|modelo|resuelto|decidid|hierro|l[ií]der|ambicios|resistente|esp[ií]ritu|combativ|leal|fiel|devoto|professional|perfectionist|resolute|determined|iron|leader|ambitious|resilient|spirited|loyal|devoted|driven/i;
-const BAD_RE = /vago|informal|temperamental|desanima|poca determinaci|cobarde|sin ambici|voluble|mercenario|descontent|casual|slack|easily discouraged|low determination|spineless|unambitious|fickle|mercenary|temperamental/i;
-
+/** Resumen en tres niveles a partir del catálogo de personalidades. */
 export function personalityTier(p: string | null): PersonalityTier {
-  if (!p) return "neutra";
-  if (BAD_RE.test(p)) return "mala";
-  if (GOOD_RE.test(p)) return "buena";
+  const t = personalityTierLevel(p);
+  if (t >= 5) return "buena";
+  if (t <= 2) return "mala";
   return "neutra";
 }
 
@@ -268,12 +358,16 @@ export interface MentoringGroup {
   unit: Unit;
   mentors: Player[];
   mentees: Player[];
+  /** Avisos sobre mentores que contagian algo indeseado. */
+  notes: string[];
 }
 
 /**
- * Mentores: ≥24 años, personalidad buena y determinación/liderazgo altos.
- * Aprendices: ≤23 años con personalidad no buena (o buena pero con
- * determinación baja). Se agrupan por unidad para que compartan sesiones.
+ * Mentores: ≥24 años, personalidad buena (o mejor) y Determinación o Liderazgo
+ * altos; se ordenan por nivel de personalidad y se proponen hasta tres por
+ * unidad (la guía recomienda un grupo con un mentor por línea). Aprendices:
+ * ≤23 años con personalidad no buena o determinación baja. Los ambiciosos se
+ * marcan porque contagian lealtad baja además de ambición.
  */
 export function suggestMentoring(players: Player[]): MentoringGroup[] {
   const units: Unit[] = ["portero", "defensa", "medio", "ataque"];
@@ -281,12 +375,20 @@ export function suggestMentoring(players: Player[]): MentoringGroup[] {
     .map((unit) => {
       const pool = players.filter((p) => unitOf(p) === unit);
       const mentors = pool
-        .filter((p) => (p.age ?? 0) >= 24 && personalityTier(p.personality) === "buena" && ((p.attrs.Det?.value ?? 0) >= 14 || (p.attrs.Ldr?.value ?? 0) >= 14))
-        .sort((a, b) => (b.attrs.Ldr?.value ?? 0) + (b.attrs.Det?.value ?? 0) - (a.attrs.Ldr?.value ?? 0) - (a.attrs.Det?.value ?? 0));
+        .filter((p) => (p.age ?? 0) >= 24 && personalityTierLevel(p.personality) >= 5 && ((p.attrs.Det?.value ?? 0) >= 14 || (p.attrs.Ldr?.value ?? 0) >= 14))
+        .sort((a, b) => personalityTierLevel(b.personality) - personalityTierLevel(a.personality) || (b.attrs.Ldr?.value ?? 0) + (b.attrs.Det?.value ?? 0) - (a.attrs.Ldr?.value ?? 0) - (a.attrs.Det?.value ?? 0))
+        .slice(0, 3);
       const mentees = pool
-        .filter((p) => (p.age ?? 99) <= 23 && (personalityTier(p.personality) !== "buena" || (p.attrs.Det?.value ?? 0) < 12))
-        .sort((a, b) => (a.attrs.Det?.value ?? 0) - (b.attrs.Det?.value ?? 0));
-      return { unit, mentors, mentees };
+        .filter((p) => (p.age ?? 99) <= 23 && (personalityTierLevel(p.personality) < 5 || (p.attrs.Det?.value ?? 0) < 12))
+        .sort((a, b) => personalityTierLevel(a.personality) - personalityTierLevel(b.personality) || (a.attrs.Det?.value ?? 0) - (b.attrs.Det?.value ?? 0));
+      const notes: string[] = [];
+      for (const m of pool.filter((p) => (p.age ?? 0) >= 24 && /ambicios|ambitious/i.test(p.personality ?? "") && !mentors.includes(p))) {
+        notes.push(`${m.name} (${m.personality}) no como mentor: contagia lealtad baja.`);
+      }
+      for (const m of mentors.filter((p) => /perfeccionista|perfectionist/i.test(p.personality ?? ""))) {
+        notes.push(`${m.name} es perfeccionista: buen mentor, pero puede pasar temperamento bajo.`);
+      }
+      return { unit, mentors, mentees, notes };
     })
     .filter((g) => g.mentees.length > 0);
 }

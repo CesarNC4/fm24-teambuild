@@ -62,7 +62,11 @@ Las reglas de roles, rasgos, instrucciones y atributos siguen las guías de
 [Passion4FM](https://www.passion4fm.com/) (rasgos, atributos, instrucciones de
 jugador, parejas de roles), la guía "Roles and Combinations" de Magicomonta
 (rol × estilo, bandas con uno o dos jugadores, rombo) y una guía comunitaria de
-instrucciones de equipo y mentalidad. Son consejos, no reglas del motor.
+instrucciones de equipo y mentalidad. El entrenamiento sigue la guía de
+jonasmorais (FM Scout) y el megapack de Passion4FM (carga semanal, rotación,
+semanas por objetivo); las personalidades y el trato con la prensa, la guía de
+personalidades de FM Scout (rangos de atributos ocultos). Son consejos, no
+reglas del motor.
 
 `refs/` (ignorado por git) contiene repositorios de la comunidad usados como
 referencia: FM24-Player-Analyzer (GPL-3), pyscoutfm (MIT), fm_player_ranking.
