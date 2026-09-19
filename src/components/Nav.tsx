@@ -12,6 +12,7 @@ const LINKS: { href: string; label: string; soon?: boolean }[] = [
   { href: "/rasgos", label: "Rasgos" },
   { href: "/entrenamiento", label: "Entrenamiento" },
   { href: "/juveniles", label: "Juveniles" },
+  { href: "/ojeados", label: "Ojeados" },
 ];
 
 export function Nav() {

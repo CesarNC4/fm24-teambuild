@@ -74,8 +74,9 @@ instrucciones de equipo y mentalidad. El entrenamiento sigue la guía de
 jonasmorais (FM Scout) y el megapack de Passion4FM (carga semanal, rotación,
 semanas por objetivo); las personalidades y el trato con la prensa, la guía de
 personalidades de FM Scout (rangos de atributos ocultos); el módulo de
-juveniles, las guías de desarrollo juvenil de Passion4FM y FM Scout. Son
-consejos, no reglas del motor.
+juveniles, las guías de desarrollo juvenil de Passion4FM y FM Scout; el de
+ojeados, las guías de scouting y de fichajes de Passion4FM. Son consejos, no
+reglas del motor.
 
 `refs/` (ignorado por git) contiene repositorios de la comunidad usados como
 referencia: FM24-Player-Analyzer (GPL-3), pyscoutfm (MIT), fm_player_ranking.

@@ -194,12 +194,12 @@ function looksLikeAttrColumn(values: string[]): boolean {
 export function parseMoney(s: string): number | null {
   if (!s) return null;
   const clean = s.replace(/\s+/g, " ").trim();
-  const numRe = /(\d[\d.,]*)\s*([KkMm])?/g;
+  const numRe = /(\d[\d.,]*)\s*([KkMm])?(?![a-z\/])/g;
   const found: number[] = [];
   let m: RegExpExecArray | null;
   while ((m = numRe.exec(clean))) {
     let raw = m[1];
-    const suffix = (m[2] ?? "").toUpperCase();
+    const suffix = m[2] ?? "";
     // Separadores: si hay coma y punto, el último es decimal; si solo hay uno y
     // va seguido de exactamente 3 dígitos, es de miles.
     const lastDot = raw.lastIndexOf(".");
@@ -215,7 +215,8 @@ export function parseMoney(s: string): number | null {
     }
     let n = Number(raw);
     if (!Number.isFinite(n)) continue;
-    if (suffix === "K") n *= 1_000;
+    // En español el juego usa "m" (mil) para miles y "M" para millones: "220m €" = 220.000, "9,2M €" = 9.200.000.
+    if (suffix.toUpperCase() === "K" || suffix === "m") n *= 1_000;
     if (suffix === "M") n *= 1_000_000;
     found.push(n);
   }

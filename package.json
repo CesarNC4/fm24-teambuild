@@ -11,7 +11,8 @@
     "check:tactic": "tsx scripts/check-tactic.ts",
     "check:training": "tsx scripts/check-training.ts",
     "check:styles": "tsx scripts/check-styles.ts",
-    "check:youth": "tsx scripts/check-youth.ts"
+    "check:youth": "tsx scripts/check-youth.ts",
+    "check:scouting": "tsx scripts/check-scouting.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",

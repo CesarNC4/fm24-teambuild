@@ -41,6 +41,8 @@ interface AppState {
   playerTraits: Record<string, string[]>;
   /** Opciones del calendario semanal de entrenamiento. */
   trainingWeek: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number };
+  /** Presupuestos de fichajes: traspaso total y sueldo máximo por jugador (mismas unidades que la exportación). */
+  scoutingBudget: { transfer: number | null; wage: number | null };
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
@@ -56,6 +58,7 @@ interface AppState {
   setActiveTactic: (id: string | null) => void;
   setPlayerTraits: (uid: string, traitIds: string[]) => void;
   setTrainingWeek: (w: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number }) => void;
+  setScoutingBudget: (b: { transfer: number | null; wage: number | null }) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -71,6 +74,7 @@ export const useAppStore = create<AppState>()(
       activeTacticId: null,
       playerTraits: {},
       trainingWeek: { matchDays: [5], preseason: false },
+      scoutingBudget: { transfer: null, wage: null },
 
       setPlayers: (source, players, meta) =>
         set((s) => ({
@@ -117,6 +121,7 @@ export const useAppStore = create<AppState>()(
       setActiveTactic: (activeTacticId) => set({ activeTacticId }),
       setPlayerTraits: (uid, traitIds) => set((s) => ({ playerTraits: { ...s.playerTraits, [uid]: traitIds } })),
       setTrainingWeek: (trainingWeek) => set({ trainingWeek }),
+      setScoutingBudget: (scoutingBudget) => set({ scoutingBudget }),
     }),
     {
       name: "fm24-assistant",
@@ -131,6 +136,7 @@ export const useAppStore = create<AppState>()(
         activeTacticId: s.activeTacticId,
         playerTraits: s.playerTraits,
         trainingWeek: s.trainingWeek,
+        scoutingBudget: s.scoutingBudget,
       }),
       // Datos guardados antes de que existieran los filiales: se completan las fuentes fijas.
       merge: (persisted, current) => {
