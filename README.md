@@ -18,11 +18,27 @@ que no identifique; la corrección se recuerda para importaciones posteriores.
 
 ## Desarrollo
 
+Se usa **pnpm**, fijado por versión en `package.json` (`packageManager`) y
+gestionado por Corepack (incluido en Node). Una sola vez, en una terminal de
+administrador: `corepack enable`. Después:
+
 ```bash
-npm install
-npm run dev      # http://localhost:3000
-npm run build
+pnpm install
+pnpm dev         # http://localhost:3000
+pnpm build
+pnpm lint
 ```
+
+Si no quieres habilitar Corepack, antepón `corepack` a cada comando
+(`corepack pnpm install`).
+
+### Política de dependencias (`pnpm-workspace.yaml`)
+
+- `minimumReleaseAge: 10080` — no se instala ninguna versión publicada hace
+  menos de 7 días; la mayoría de paquetes comprometidos se retiran antes.
+- `onlyBuiltDependencies: []` — ningún paquete ejecuta scripts de instalación.
+  Si alguno lo necesita, se añade a la lista de forma explícita.
+- Sin *hoisting*: solo se puede importar lo declarado en `package.json`.
 
 ## Estructura
 

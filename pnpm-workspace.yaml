@@ -1,0 +1,16 @@
+allowBuilds:
+  unrs-resolver: set this to true or false
+
+# Configuración de pnpm (desde v10 vive aquí, no en .npmrc).
+
+# No instalar versiones publicadas hace menos de 7 días (en minutos).
+# La mayoría de paquetes comprometidos se detectan y retiran en 24-72 h.
+minimumReleaseAge: 10080
+
+# Ningún paquete puede ejecutar scripts de instalación (preinstall/postinstall).
+# Si algo lo necesita de verdad, se añade aquí de forma explícita.
+onlyBuiltDependencies: []
+
+# Solo se resuelven dependencias declaradas en package.json (sin "hoisting"
+# de paquetes fantasma al node_modules raíz).
+publicHoistPattern: []
