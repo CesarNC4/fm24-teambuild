@@ -7,6 +7,7 @@ import { ROLE_BY_ID, roleLabel } from "@/lib/fm/roles";
 import { bestRoles } from "@/lib/fm/scoring";
 import type { Player } from "@/lib/fm/types";
 import { useAppStore } from "@/lib/store";
+import { formatDeltas, progressSince } from "@/lib/fm/history";
 import { AttrCell, ScoreBadge } from "@/components/AttrCell";
 
 type SortKey = "name" | "age" | "pos" | "best" | "wage" | "value" | AttrKey;
@@ -27,6 +28,7 @@ function fmtMoney(n: number | null): string {
 
 export default function SquadPage() {
   const players = useAppStore((s) => s.players.plantilla);
+  const history = useAppStore((s) => s.history);
   const hydrated = useAppStore((s) => s.hydrated);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "best", dir: -1 });
   const [groups, setGroups] = useState<Set<AttrGroup>>(new Set(["tecnico", "mental", "fisico"]));
@@ -125,6 +127,7 @@ export default function SquadPage() {
               <th>Minutos</th>
               <th>Contrato</th>
               <th>Personalidad</th>
+              <th className="num" title="Puntos de atributo ganados o perdidos desde la exportación anterior">Evol.</th>
               {visibleAttrs.map((a) => (
                 <th key={a.key} title={`${a.es}${a.desc ? ` — ${a.desc}` : ""}`} className="cursor-pointer hover:text-accent num" onClick={() => setSort((s) => ({ key: a.key, dir: s.key === a.key ? (s.dir === 1 ? -1 : 1) : -1 }))}>
                   {a.key}{sort.key === a.key ? (sort.dir === 1 ? "▲" : "▼") : ""}
@@ -152,6 +155,14 @@ export default function SquadPage() {
                 <td className="text-xs">{p.playingTime ?? "–"}</td>
                 <td className="text-xs">{p.contractExpiry ?? "–"}</td>
                 <td className="text-xs">{p.personality ?? "–"}</td>
+                {(() => {
+                  const prog = progressSince(history, p.uid);
+                  return (
+                    <td className={`num text-xs ${!prog ? "text-muted" : prog.net > 0 ? "text-attr-good" : prog.net < 0 ? "text-attr-low" : "text-muted"}`} title={prog ? `${prog.days} días: ${formatDeltas(prog.deltas, 14) || "sin cambios"}` : "a partir de la segunda importación"}>
+                      {prog ? `${prog.net >= 0 ? "+" : ""}${prog.net}` : "–"}
+                    </td>
+                  );
+                })()}
                 {visibleAttrs.map((a) => {
                   const relevant = p.isGoalkeeper ? GK_KEYS.includes(a.key) || a.group !== "tecnico" : OUTFIELD_KEYS.includes(a.key);
                   return relevant ? <AttrCell key={a.key} v={p.attrs[a.key]} /> : <td key={a.key} className="num text-muted/40">{p.attrs[a.key]?.value ?? "–"}</td>;

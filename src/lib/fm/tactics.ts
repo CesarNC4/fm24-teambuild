@@ -3,7 +3,7 @@
  * profundidad por hueco y avisos de equilibrio entre roles.
  */
 
-import { FORMATION_BY_ID, type Formation, type FormationSlot } from "./formations";
+import { FORMATIONS, FORMATION_BY_ID, type Formation, type FormationSlot } from "./formations";
 import { ROLE_BY_ID, type RoleDef } from "./roles";
 import { DEFAULT_SCORING, scoreRole, type RoleScore, type ScoringConfig } from "./scoring";
 import type { Player, PositionSlot } from "./types";
@@ -440,4 +440,27 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
     if (possession && !sc.some((c) => ["SS", "DLF", "F9", "TQ", "CF"].includes(c))) out.push({ level: "info", text: "Posesión con dos puntas: un creador (Retrasado, Falso nueve, Trequartista) y un rematador; el juego se apoya en paredes y desmarques al espacio." });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Explorador de formaciones (idea del "tactic explorer" de FM24-Player-Analyzer)
+// ---------------------------------------------------------------------------
+
+export interface FormationFit {
+  formation: Formation;
+  /** Media del mejor XI con los roles por defecto de la formación. */
+  average: number;
+  /** Media del XI sin los tres mejores huecos: mide el fondo, no solo las estrellas. */
+  floor: number;
+}
+
+/** Ordena todas las formaciones por cómo encaja la plantilla en ellas. */
+export function rankFormations(players: Player[], exclude?: Set<string>): FormationFit[] {
+  return FORMATIONS.map((f) => {
+    const t = newTactic(f.id, f.name);
+    const lineup = buildLineup(t, players, { exclude });
+    const eff = lineup.slots.map((s) => s.starter?.effective ?? 0).sort((a, b) => a - b);
+    const floorArr = eff.slice(0, Math.max(1, eff.length - 3));
+    return { formation: f, average: lineup.average, floor: floorArr.reduce((a, b) => a + b, 0) / floorArr.length };
+  }).sort((a, b) => b.average - a.average);
 }

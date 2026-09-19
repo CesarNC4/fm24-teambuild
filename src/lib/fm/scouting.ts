@@ -206,10 +206,22 @@ export function fmtMoney(n: number): string {
 
 export function evaluateAll(scouted: Player[], needs: SquadNeed[], firstTeam: Player[], budget: Budget, gameYear: number | null): CandidateEval[] {
   const own = new Set(firstTeam.map((p) => p.uid));
-  return scouted
+  const evals = scouted
     .filter((p) => !own.has(p.uid))
-    .map((p) => evaluateCandidate(p, needs, firstTeam, budget, gameYear))
-    .sort((a, b) => b.score - a.score);
+    .map((p) => evaluateCandidate(p, needs, firstTeam, budget, gameYear));
+  // Gangas (idea del "bargain hunter" de fm-dash): nivel alto dentro de la lista y valor bajo.
+  const withFit = evals.filter((e) => e.fit && e.player.value != null && e.player.value > 0);
+  if (withFit.length >= 5) {
+    const pct = (arr: number[], v: number) => arr.filter((x) => x <= v).length / arr.length;
+    const levels = withFit.map((e) => e.fit!.effective);
+    const values = withFit.map((e) => e.player.value as number);
+    for (const e of withFit) {
+      const lp = pct(levels, e.fit!.effective);
+      const vp = pct(values, e.player.value as number);
+      if (lp - vp >= 0.35 && e.verdict !== "descartar") e.pluses.push(`Ganga: nivel en el ${Math.round(lp * 100)} % de la lista y valor solo en el ${Math.round(vp * 100)} %.`);
+    }
+  }
+  return evals.sort((a, b) => b.score - a.score);
 }
 
 // ---------------------------------------------------------------------------

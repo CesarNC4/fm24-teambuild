@@ -7,6 +7,7 @@ import { POSITION_LABEL, ROLE_BY_ID, roleLabel } from "@/lib/fm/roles";
 import { TIER_LABEL, type PersonalityTierLevel } from "@/lib/fm/personalities";
 import { DESTINATION_LABEL, LOAN_LABEL, assessAllYouth, positionCoverage, type Destination, type YouthAssessment } from "@/lib/fm/youth";
 import { useAppStore } from "@/lib/store";
+import { developmentVerdict, formatDeltas, progressSince, type History } from "@/lib/fm/history";
 import { ScoreBadge } from "@/components/AttrCell";
 
 const DEST_CLASS: Record<Destination, string> = {
@@ -20,6 +21,7 @@ const DEST_CLASS: Record<Destination, string> = {
 export default function YouthPage() {
   const players = useAppStore((s) => s.players);
   const squads = useAppStore((s) => s.squads);
+  const history = useAppStore((s) => s.history);
   const hydrated = useAppStore((s) => s.hydrated);
   const tactics = useAppStore((s) => s.tactics);
   const activeTacticId = useAppStore((s) => s.activeTacticId);
@@ -74,7 +76,7 @@ export default function YouthPage() {
               <thead>
                 <tr>
                   <th>Jugador</th><th className="num">Edad</th><th>Equipo</th><th>Mejor hueco</th><th className="num">Nivel</th><th className="num">vs 1º eq.</th>
-                  <th className="num">Informe</th><th>Personalidad</th><th>Destino</th><th>Entrenar</th>
+                  <th className="num">Informe</th><th>Personalidad</th><th>Evolución</th><th>Destino</th><th>Entrenar</th>
                 </tr>
               </thead>
               <tbody>
@@ -82,7 +84,7 @@ export default function YouthPage() {
                   const p = a.player;
                   const isOpen = open === p.uid;
                   return (
-                    <Row key={p.uid} a={a} isOpen={isOpen} toggle={() => setOpen(isOpen ? null : p.uid)} />
+                    <Row key={p.uid} a={a} history={history} isOpen={isOpen} toggle={() => setOpen(isOpen ? null : p.uid)} />
                   );
                 })}
               </tbody>
@@ -90,7 +92,8 @@ export default function YouthPage() {
           </div>
           <p className="text-xs text-muted">
             <b>Nivel</b>: puntuación en su mejor hueco de la táctica activa. <b>vs 1º eq.</b>: puesto que ocuparía entre los del primer equipo en ese hueco y puntos que le faltan al titular.
-            <b> Informe</b>: valoración del cuerpo técnico (columna Idoneidad/Potencial), 1-5. Clic en una fila para ver motivos, alertas y foco de entrenamiento.
+            <b> Informe</b>: valoración del cuerpo técnico (columna Idoneidad/Potencial), 1-5. <b>Evolución</b>: puntos de atributo ganados o perdidos desde la exportación anterior (se guarda una foto en cada importación).
+            Clic en una fila para ver motivos, alertas y foco de entrenamiento.
           </p>
         </div>
 
@@ -121,9 +124,12 @@ export default function YouthPage() {
   );
 }
 
-function Row({ a, isOpen, toggle }: { a: YouthAssessment; isOpen: boolean; toggle: () => void }) {
+function Row({ a, history, isOpen, toggle }: { a: YouthAssessment; history: History; isOpen: boolean; toggle: () => void }) {
   const p = a.player;
   const tier = a.personalityTier as PersonalityTierLevel;
+  const prog = progressSince(history, p.uid);
+  const dev = developmentVerdict(prog, p.age);
+  const devClass = dev.tone === "good" ? "text-attr-good" : dev.tone === "low" ? "text-attr-low" : dev.tone === "mid" ? "text-attr-mid" : "text-muted";
   return (
     <>
       <tr className="cursor-pointer hover:bg-surface-2" onClick={toggle}>
@@ -143,6 +149,7 @@ function Row({ a, isOpen, toggle }: { a: YouthAssessment; isOpen: boolean; toggl
         </td>
         <td className="num text-xs" title={p.coachRating?.raw}>{a.potential != null ? a.potential.toFixed(1) : "–"}</td>
         <td className={`text-xs whitespace-nowrap ${tier >= 5 ? "text-attr-good" : tier <= 1 ? "text-attr-low" : ""}`} title={TIER_LABEL[tier]}>{p.personality ?? "—"}</td>
+        <td className={`text-xs whitespace-nowrap ${devClass}`} title={prog ? formatDeltas(prog.deltas, 12) : "Se rellena a partir de la segunda importación"}>{prog ? `${prog.net >= 0 ? "+" : ""}${prog.net}` : "–"}</td>
         <td className="text-xs whitespace-nowrap">
           <span className={`px-1.5 py-0.5 rounded ${DEST_CLASS[a.destination]}`}>
             {a.destination === "filial" && a.targetSquad ? a.targetSquad.name : DESTINATION_LABEL[a.destination]}
@@ -156,7 +163,7 @@ function Row({ a, isOpen, toggle }: { a: YouthAssessment; isOpen: boolean; toggl
       </tr>
       {isOpen && (
         <tr className="bg-surface-2/50">
-          <td colSpan={10} className="text-xs p-3">
+          <td colSpan={11} className="text-xs p-3 whitespace-normal">
             <div className="grid md:grid-cols-3 gap-3">
               <div>
                 <div className="font-medium mb-1">Motivos</div>
@@ -183,6 +190,10 @@ function Row({ a, isOpen, toggle }: { a: YouthAssessment; isOpen: boolean; toggl
                 ))}
                 <p>Intensidad: <b>{a.training.intensity}</b> <span className="text-muted">({a.training.intensityWhy})</span></p>
                 <p className="text-muted">{a.training.traitsPhase ? "≥20 años: ya puede aprender rasgos (ver Rasgos)." : "Menor de 20: primero atributos, rasgos más adelante."}</p>
+                <div className="font-medium mt-2 mb-1">Evolución</div>
+                <p className={devClass}>{dev.label}</p>
+                {prog && prog.deltas.length > 0 && <p className="text-muted">{formatDeltas(prog.deltas, 14)}</p>}
+                {prog && prog.deltas.length === 0 && <p className="text-muted">Sin cambios de atributos entre las dos últimas exportaciones.</p>}
               </div>
             </div>
           </td>

@@ -225,7 +225,7 @@ function Row({ e, isOpen, toggle }: { e: CandidateEval; isOpen: boolean; toggle:
       </tr>
       {isOpen && (
         <tr className="bg-surface-2/50">
-          <td colSpan={13} className="text-xs p-3">
+          <td colSpan={13} className="text-xs p-3 whitespace-normal">
             <div className="grid md:grid-cols-3 gap-3">
               <div>
                 <div className="font-medium mb-1">A favor</div>

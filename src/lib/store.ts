@@ -5,6 +5,7 @@ import { persist, createJSONStorage, type StateStorage } from "zustand/middlewar
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import type { ImportSource, Player, Squad } from "./fm/types";
 import type { Tactic } from "./fm/tactics";
+import { appendSnapshots, type History } from "./fm/history";
 
 /** Almacenamiento en IndexedDB (mucha más capacidad que localStorage). */
 const idbStorage: StateStorage = {
@@ -43,6 +44,8 @@ interface AppState {
   trainingWeek: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number; youthTheme?: string };
   /** Presupuestos de fichajes: traspaso total y sueldo máximo por jugador (mismas unidades que la exportación). */
   scoutingBudget: { transfer: number | null; wage: number | null };
+  /** Fotos de atributos por UID en cada importación (evolución). */
+  history: History;
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
@@ -75,12 +78,15 @@ export const useAppStore = create<AppState>()(
       playerTraits: {},
       trainingWeek: { matchDays: [5], preseason: false },
       scoutingBudget: { transfer: null, wage: null },
+      history: {},
 
       setPlayers: (source, players, meta) =>
         set((s) => ({
           players: { ...s.players, [source]: players },
           imports: { ...s.imports, [source]: meta },
           clubName: source === "plantilla" ? (mostCommonClub(players) ?? s.clubName) : s.clubName,
+          // Los ojeados no cuentan: sus atributos vienen en rango y no son de tu club.
+          history: source === "ojeados" ? s.history : appendSnapshots(s.history, players, meta.importedAt),
         })),
       clearSource: (source) =>
         set((s) => ({
@@ -137,6 +143,7 @@ export const useAppStore = create<AppState>()(
         playerTraits: s.playerTraits,
         trainingWeek: s.trainingWeek,
         scoutingBudget: s.scoutingBudget,
+        history: s.history,
       }),
       // Datos guardados antes de que existieran los filiales: se completan las fuentes fijas.
       merge: (persisted, current) => {

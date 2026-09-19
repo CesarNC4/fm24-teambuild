@@ -7,7 +7,7 @@ import { INSTRUCTIONS, INSTRUCTION_BY_ID, MENTALITIES, MENTALITY_BY_ID, PHASE_LA
 import { tacticAdvice } from "@/lib/fm/advice";
 import { rankStyles, UNIT_SHORT } from "@/lib/fm/styles";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
-import { buildLineup, newTactic, poolPlayers, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
+import { buildLineup, newTactic, poolPlayers, rankFormations, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
 import { strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -56,6 +56,11 @@ export default function TacticPage() {
   const warnings = useMemo(() => (tactic ? tacticWarnings(tactic) : []), [tactic]);
   const advice = useMemo(() => (tactic && lineup ? tacticAdvice(tactic, lineup) : []), [tactic, lineup]);
   const styleRank = useMemo(() => (lineup ? rankStyles(lineup) : []), [lineup]);
+  const formationRank = useMemo(() => {
+    if (!tactic || !players.length) return [];
+    const pool = poolPlayers(tactic, allPlayers, filiales.map((q) => q.id));
+    return pool.players.length ? rankFormations(pool.players, pool.exclude) : [];
+  }, [tactic, players.length, allPlayers, filiales]);
   const currentStyle = tactic?.styleId ? STYLE_BY_ID[tactic.styleId] : null;
   const currentFit = currentStyle ? styleRank.find((f) => f.style.id === currentStyle.id) ?? null : null;
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
@@ -272,6 +277,22 @@ export default function TacticPage() {
                   </details>
                 </div>
               )}
+              <details>
+                <summary className="cursor-pointer text-xs text-muted">¿Qué formación encaja mejor con esta plantilla?</summary>
+                <table className="tbl w-full mt-1">
+                  <thead><tr><th>Formación</th><th className="num">Media XI</th><th className="num">Fondo</th></tr></thead>
+                  <tbody>
+                    {formationRank.map((f) => (
+                      <tr key={f.formation.id} className={f.formation.id === tactic.formationId ? "font-medium" : ""}>
+                        <td><button className="text-left hover:underline" onClick={() => changeFormation(f.formation.id)}>{f.formation.name}</button></td>
+                        <td className="num text-xs">{f.average.toFixed(1)}</td>
+                        <td className="num text-xs text-muted">{f.floor.toFixed(1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[10px] text-muted mt-1">Mejor XI con los roles por defecto de cada formación. «Fondo» = media sin los tres mejores huecos (cuánto aguanta sin sus estrellas). Clic cambia la formación (los roles vuelven a los de por defecto).</p>
+              </details>
               <details>
                 <summary className="cursor-pointer text-xs text-muted">¿Qué estilo encaja mejor con este XI?</summary>
                 <table className="tbl w-full mt-1">
