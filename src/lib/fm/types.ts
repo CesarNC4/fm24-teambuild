@@ -58,13 +58,50 @@ export interface Player {
   learningTrait: string | null;
   pros: string | null;
   cons: string | null;
+  // --- Columnas añadidas a la vista (contrato, informe, estadísticas) ---
+  /** Fecha de nacimiento "20/6/1999". */
+  birthDate: string | null;
+  contractStart: string | null;
+  releaseClause: number | null;
+  /** "Tiempo completo", "Contrato juvenil", "A tiempo parcial"… */
+  contractType: string | null;
+  /** "Contrato tiempo completo", "Mes a mes"… */
+  contractKind: string | null;
+  /** Situación de fichaje: "Listado", "No asignado"… */
+  transferStatus: string | null;
+  /** Situación de cesión: "Listado", "No disponible", "No asignado"… */
+  loanStatus: string | null;
+  /** Valoración textual del cuerpo técnico (columna Idoneidad/Potencial): rango 1-5. */
+  coachRating: { raw: string; min: number; max: number } | null;
+  apps: number | null;
+  starts: number | null;
+  minutes: number | null;
+  goals: number | null;
+  assists: number | null;
+  xg: number | null;
+  xa: number | null;
+  morale: string | null;
+  condition: string | null;
+  /** Columna "Inf" del juego: Les, Juv, Int, Per… */
+  info: string | null;
   attrs: Attrs;
   /** Columnas de la exportación que no se reconocieron, por si se quieren mostrar. */
   extra: Record<string, string>;
   isGoalkeeper: boolean;
 }
 
-export type ImportSource = "plantilla" | "ojeados";
+/** Id de la fuente de importación: "plantilla", "ojeados" o un filial ("filial-…"). */
+export type ImportSource = string;
+
+export interface Squad {
+  id: ImportSource;
+  name: string;
+  kind: "primer" | "filial" | "ojeados";
+  /** Edad máxima del filial (Sub-18 → 18, Sub-21 → 21). null = sin límite (equipo B). */
+  maxAge: number | null;
+  /** true si juega una liga competitiva de verdad (equipo B), no liga juvenil. */
+  competitive: boolean;
+}
 
 export interface ImportResult {
   players: Player[];

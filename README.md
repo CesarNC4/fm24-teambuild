@@ -13,6 +13,14 @@ en IndexedDB y nunca salen de tu máquina. Desplegable en Vercel sin backend.
 2. `Ctrl+P` → *Página web* y guarda el `.html`.
 3. Súbelo en la pestaña **Importar**, revisa las columnas detectadas y guarda.
 
+La misma vista sirve para el primer equipo, los filiales (Sub-21, Sub-18,
+equipo B: se añaden en Importar con su edad máxima) y las búsquedas de
+ojeados. Además de los atributos, la vista recomendada incluye fecha de
+nacimiento, tipo de contrato, cláusula, situación de fichaje/cesión, informe
+del cuerpo técnico (Idoneidad/Potencial), partidos, minutos, goles,
+asistencias, moral y condición: alimentan Juveniles, las charlas y las alertas
+de contrato. Las columnas de estrellas (Calidad/Potencial) se exportan vacías.
+
 El parser reconoce cabeceras en español e inglés y permite corregir a mano las
 que no identifique; la corrección se recuerda para importaciones posteriores.
 
@@ -65,8 +73,9 @@ jugador, parejas de roles, estilos de juego y presets), la guía "Roles and Comb
 instrucciones de equipo y mentalidad. El entrenamiento sigue la guía de
 jonasmorais (FM Scout) y el megapack de Passion4FM (carga semanal, rotación,
 semanas por objetivo); las personalidades y el trato con la prensa, la guía de
-personalidades de FM Scout (rangos de atributos ocultos). Son consejos, no
-reglas del motor.
+personalidades de FM Scout (rangos de atributos ocultos); el módulo de
+juveniles, las guías de desarrollo juvenil de Passion4FM y FM Scout. Son
+consejos, no reglas del motor.
 
 `refs/` (ignorado por git) contiene repositorios de la comunidad usados como
 referencia: FM24-Player-Analyzer (GPL-3), pyscoutfm (MIT), fm_player_ranking.

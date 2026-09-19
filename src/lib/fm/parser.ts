@@ -19,7 +19,10 @@ type FieldKey =
   | "name" | "age" | "wage" | "value" | "nationality" | "position" | "personality"
   | "mediaHandling" | "avgRating" | "leftFoot" | "rightFoot" | "height" | "uid"
   | "club" | "contractExpiry" | "preferredFoot" | "playingTime" | "secondNationality"
-  | "playingStyle" | "learningTrait" | "pros" | "cons";
+  | "playingStyle" | "learningTrait" | "pros" | "cons"
+  | "birthDate" | "contractStart" | "releaseClause" | "contractType" | "contractKind"
+  | "transferStatus" | "loanStatus" | "coachRating" | "abilityRating" | "potentialRating"
+  | "apps" | "starts" | "minutes" | "minsPerApp" | "goals" | "assists" | "xg" | "xa" | "morale" | "condition" | "info";
 
 const FIELD_ALIASES: Record<FieldKey, string[]> = {
   name: ["Name", "Nombre"],
@@ -44,7 +47,53 @@ const FIELD_ALIASES: Record<FieldKey, string[]> = {
   learningTrait: ["Desarrollar un atributo del jugador", "Learning Trait"],
   pros: ["Pros"],
   cons: ["Contras", "Cons"],
+  birthDate: ["Nacim.", "Nacim", "Fecha de nacimiento", "DoB", "Date of Birth"],
+  contractStart: ["Comienzo", "Begins", "Contract Begins", "Inicio"],
+  releaseClause: ["Cláus. Resc.", "Claus. Resc.", "Cláusula de rescisión", "Release Clause", "Min Fee Rls"],
+  contractType: ["Tipo de contrato", "Contract Type"],
+  contractKind: ["Tipo", "Type"],
+  transferStatus: ["Situación de fichaje", "Transfer Status", "Estado de traspaso"],
+  loanStatus: ["Situación de cesión", "Loan Status", "Estado de cesión"],
+  coachRating: ["Idoneidad", "Suitability", "Recomendación", "Recommendation"],
+  abilityRating: ["Calidad", "Habilidad actual", "Ability", "Current Ability", "CA"],
+  potentialRating: ["Potencial", "Potential", "Potential Ability", "PA"],
+  apps: ["Part", "Apps", "PJ", "Partidos"],
+  starts: ["Titular", "Starts"],
+  minutes: ["Min", "Mins", "Minutos"],
+  minsPerApp: ["Min/Par", "Mins/Gm", "Min/PJ"],
+  goals: ["Gol", "Gls", "Goles", "Goals"],
+  assists: ["Asis", "Ast", "Asistencias", "Assists"],
+  xg: ["xG- SP", "xG", "xG-SP"],
+  xa: ["xA"],
+  morale: ["Moral", "Morale"],
+  condition: ["CON", "Condición", "Condition"],
+  info: ["Inf", "Info"],
 };
+
+/**
+ * Escala textual de los informes del cuerpo técnico (columnas Idoneidad /
+ * Potencial). El juego exporta "Buena - Soberbia" cuando hay incertidumbre.
+ */
+const RATING_WORDS: [RegExp, number][] = [
+  [/clase mundial|world class/i, 5],
+  [/soberbi|superb/i, 4.5],
+  [/excelente|excellent/i, 4],
+  [/muy buena|very good/i, 3.5],
+  [/^buena|^good/i, 3],
+  [/correcta|decent|fair/i, 2.5],
+  [/aceptable|adequate|average/i, 2],
+  [/floja|poor/i, 1.5],
+  [/pobre|muy floja|very poor/i, 1],
+];
+
+export function parseCoachRating(s: string | undefined): { raw: string; min: number; max: number } | null {
+  const raw = (s ?? "").trim();
+  if (!raw || raw === "-") return null;
+  const parts = raw.split(/\s+-\s+/).map((x) => x.trim());
+  const vals = parts.map((p) => RATING_WORDS.find(([re]) => re.test(p))?.[1]).filter((v): v is number => v != null);
+  if (!vals.length) return null;
+  return { raw, min: Math.min(...vals), max: Math.max(...vals) };
+}
 
 type ColumnKey = { kind: "attr"; key: AttrKey } | { kind: "field"; key: FieldKey };
 
@@ -354,6 +403,25 @@ export function parseFmHtml(html: string, overrides: Record<string, string | nul
       learningTrait: cleanNone(fields.learningTrait),
       pros: cleanNone(fields.pros),
       cons: cleanNone(fields.cons),
+      birthDate: cleanNone(fields.birthDate)?.replace(/\s*\(.*\)\s*$/, "") ?? null,
+      contractStart: cleanNone(fields.contractStart),
+      releaseClause: parseMoney(cleanNone(fields.releaseClause) ?? ""),
+      contractType: cleanNone(fields.contractType),
+      contractKind: cleanNone(fields.contractKind),
+      transferStatus: cleanNone(fields.transferStatus),
+      loanStatus: cleanNone(fields.loanStatus),
+      // El informe puede venir en Idoneidad (vista en español) o en Potencial/Calidad.
+      coachRating: parseCoachRating(fields.coachRating) ?? parseCoachRating(fields.potentialRating) ?? parseCoachRating(fields.abilityRating),
+      apps: parseNumber(cleanNone(fields.apps) ?? ""),
+      starts: parseNumber(cleanNone(fields.starts) ?? ""),
+      minutes: parseNumber(cleanNone(fields.minutes) ?? ""),
+      goals: parseNumber(cleanNone(fields.goals) ?? ""),
+      assists: parseNumber(cleanNone(fields.assists) ?? ""),
+      xg: parseNumber(cleanNone(fields.xg) ?? ""),
+      xa: parseNumber(cleanNone(fields.xa) ?? ""),
+      morale: cleanNone(fields.morale),
+      condition: cleanNone(fields.condition),
+      info: cleanNone(fields.info),
       attrs,
       extra,
       isGoalkeeper,

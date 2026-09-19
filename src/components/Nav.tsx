@@ -11,6 +11,7 @@ const LINKS: { href: string; label: string; soon?: boolean }[] = [
   { href: "/tactica", label: "Táctica" },
   { href: "/rasgos", label: "Rasgos" },
   { href: "/entrenamiento", label: "Entrenamiento" },
+  { href: "/juveniles", label: "Juveniles" },
 ];
 
 export function Nav() {

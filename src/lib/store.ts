@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
-import type { ImportSource, Player } from "./fm/types";
+import type { ImportSource, Player, Squad } from "./fm/types";
 import type { Tactic } from "./fm/tactics";
 
 /** Almacenamiento en IndexedDB (mucha más capacidad que localStorage). */
@@ -19,9 +19,17 @@ export interface ImportMeta {
   count: number;
 }
 
+/** Fuentes fijas; los filiales se añaden con addSquad. */
+export const DEFAULT_SQUADS: Squad[] = [
+  { id: "plantilla", name: "Primer equipo", kind: "primer", maxAge: null, competitive: true },
+  { id: "ojeados", name: "Ojeados / búsqueda", kind: "ojeados", maxAge: null, competitive: false },
+];
+
 interface AppState {
   players: Record<ImportSource, Player[]>;
   imports: Record<ImportSource, ImportMeta | null>;
+  /** Plantillas del club (primer equipo, filiales) y la lista de ojeados. */
+  squads: Squad[];
   /** Cabecera → clave forzada, reutilizado en importaciones posteriores. */
   headerOverrides: Record<string, string | null>;
   /** Nombre del club del usuario (se deduce de la plantilla). */
@@ -36,6 +44,9 @@ interface AppState {
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
+  addSquad: (s: Omit<Squad, "id" | "kind">) => string;
+  updateSquad: (id: string, patch: Partial<Squad>) => void;
+  removeSquad: (id: string) => void;
   setHeaderOverrides: (o: Record<string, string | null>) => void;
   setClubName: (name: string | null) => void;
   markHydrated: () => void;
@@ -52,6 +63,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       players: { plantilla: [], ojeados: [] },
       imports: { plantilla: null, ojeados: null },
+      squads: DEFAULT_SQUADS,
       headerOverrides: {},
       clubName: null,
       hydrated: false,
@@ -71,6 +83,24 @@ export const useAppStore = create<AppState>()(
           players: { ...s.players, [source]: [] },
           imports: { ...s.imports, [source]: null },
         })),
+      addSquad: (sq) => {
+        const id = `filial-${Date.now().toString(36)}`;
+        set((s) => ({
+          squads: [...s.squads, { ...sq, id, kind: "filial" }],
+          players: { ...s.players, [id]: [] },
+          imports: { ...s.imports, [id]: null },
+        }));
+        return id;
+      },
+      updateSquad: (id, patch) => set((s) => ({ squads: s.squads.map((q) => (q.id === id ? { ...q, ...patch } : q)) })),
+      removeSquad: (id) =>
+        set((s) => {
+          const players = { ...s.players };
+          const imports = { ...s.imports };
+          delete players[id];
+          delete imports[id];
+          return { squads: s.squads.filter((q) => q.id !== id), players, imports };
+        }),
       setHeaderOverrides: (headerOverrides) => set({ headerOverrides }),
       setClubName: (clubName) => set({ clubName }),
       markHydrated: () => set({ hydrated: true }),
@@ -94,6 +124,7 @@ export const useAppStore = create<AppState>()(
       partialize: (s) => ({
         players: s.players,
         imports: s.imports,
+        squads: s.squads,
         headerOverrides: s.headerOverrides,
         clubName: s.clubName,
         tactics: s.tactics,
@@ -101,6 +132,12 @@ export const useAppStore = create<AppState>()(
         playerTraits: s.playerTraits,
         trainingWeek: s.trainingWeek,
       }),
+      // Datos guardados antes de que existieran los filiales: se completan las fuentes fijas.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppState>;
+        const squads = p.squads?.length ? p.squads : DEFAULT_SQUADS;
+        return { ...current, ...p, squads, players: { plantilla: [], ojeados: [], ...(p.players ?? {}) }, imports: { plantilla: null, ojeados: null, ...(p.imports ?? {}) } };
+      },
       onRehydrateStorage: () => (state) => {
         state?.markHydrated();
       },

@@ -36,6 +36,11 @@ export default function ImportPage() {
   const setPlayers = useAppStore((s) => s.setPlayers);
   const imports = useAppStore((s) => s.imports);
   const clearSource = useAppStore((s) => s.clearSource);
+  const squads = useAppStore((s) => s.squads);
+  const addSquad = useAppStore((s) => s.addSquad);
+  const updateSquad = useAppStore((s) => s.updateSquad);
+  const removeSquad = useAppStore((s) => s.removeSquad);
+  const [newSquad, setNewSquad] = useState("");
   const savedOverrides = useAppStore((s) => s.headerOverrides);
   const setHeaderOverrides = useAppStore((s) => s.setHeaderOverrides);
 
@@ -88,14 +93,29 @@ export default function ImportPage() {
             <div className="text-sm">{fileName ? <b>{fileName}</b> : "Arrastra el archivo .html aquí o haz clic para elegirlo"}</div>
           </label>
 
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex flex-wrap items-center gap-4 text-sm">
             <span className="text-muted">Importar como:</span>
-            {(["plantilla", "ojeados"] as ImportSource[]).map((s) => (
-              <label key={s} className="flex items-center gap-1.5 cursor-pointer">
-                <input type="radio" name="source" checked={source === s} onChange={() => setSource(s)} />
-                {s === "plantilla" ? "Mi plantilla" : "Ojeados / búsqueda"}
+            {squads.map((q) => (
+              <label key={q.id} className="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="source" checked={source === q.id} onChange={() => setSource(q.id)} />
+                {q.name}
               </label>
             ))}
+            <form
+              className="flex items-center gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const name = newSquad.trim();
+                if (!name) return;
+                const m = /(\d{2})/.exec(name);
+                const id = addSquad({ name, maxAge: m ? Number(m[1]) : null, competitive: /\bB\b|filial|reserv/i.test(name) && !m });
+                setSource(id);
+                setNewSquad("");
+              }}
+            >
+              <input className="bg-surface border border-border rounded px-2 py-0.5 w-32" placeholder="Sub-21, Sub-18, Equipo B…" value={newSquad} onChange={(e) => setNewSquad(e.target.value)} />
+              <button className="px-2 py-0.5 rounded border border-border hover:bg-surface-2" type="submit">+ filial</button>
+            </form>
           </div>
 
           {error && <div className="text-sm text-attr-low">{error}</div>}
@@ -103,21 +123,44 @@ export default function ImportPage() {
 
         <aside className="bg-surface border border-border rounded-lg p-4 text-sm space-y-3 h-fit">
           <h2 className="font-semibold">Datos guardados</h2>
-          {(["plantilla", "ojeados"] as ImportSource[]).map((s) => {
-            const m = imports[s];
+          {squads.map((q) => {
+            const m = imports[q.id];
             return (
-              <div key={s} className="flex items-start justify-between gap-2">
+              <div key={q.id} className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="font-medium">{s === "plantilla" ? "Mi plantilla" : "Ojeados"}</div>
+                  <div className="font-medium">{q.name}</div>
                   <div className="text-muted text-xs">
                     {m ? `${m.count} jugadores · ${m.fileName} · ${new Date(m.importedAt).toLocaleString("es")}` : "vacío"}
                   </div>
+                  {q.kind === "filial" && (
+                    <div className="text-xs text-muted flex items-center gap-2 mt-0.5">
+                      <label>
+                        edad máx.{" "}
+                        <input
+                          className="bg-surface border border-border rounded px-1 w-12"
+                          value={q.maxAge ?? ""}
+                          placeholder="—"
+                          onChange={(e) => updateSquad(q.id, { maxAge: e.target.value ? Number(e.target.value) : null })}
+                        />
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input type="checkbox" checked={q.competitive} onChange={(e) => updateSquad(q.id, { competitive: e.target.checked })} /> liga competitiva
+                      </label>
+                    </div>
+                  )}
                 </div>
-                {m && (
-                  <button className="text-xs text-attr-low hover:underline" onClick={() => clearSource(s)}>
-                    borrar
-                  </button>
-                )}
+                <div className="flex flex-col items-end gap-0.5">
+                  {m && (
+                    <button className="text-xs text-attr-low hover:underline" onClick={() => clearSource(q.id)}>
+                      borrar
+                    </button>
+                  )}
+                  {q.kind === "filial" && (
+                    <button className="text-xs text-muted hover:underline" onClick={() => { if (source === q.id) setSource("plantilla"); removeSquad(q.id); }}>
+                      quitar filial
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -139,7 +182,7 @@ export default function ImportPage() {
               disabled={result.players.length === 0}
               className="ml-auto px-4 py-1.5 rounded-md bg-accent text-accent-fg font-medium disabled:opacity-50"
             >
-              Guardar como {source === "plantilla" ? "mi plantilla" : "ojeados"}
+              Guardar como {squads.find((q) => q.id === source)?.name ?? source}
             </button>
             {saved && <span className="text-attr-good">Guardado ✓</span>}
           </div>
