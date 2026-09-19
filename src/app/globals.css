@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef0f4;
+  --border: #dfe3ea;
+  --foreground: #16181d;
+  --muted: #667085;
+  --accent: #1d6f42;
+  --accent-fg: #ffffff;
+  /* Escala de atributos 1-20, como en el juego */
+  --attr-low: #b42318;
+  --attr-mid: #c98b00;
+  --attr-good: #1d7a3f;
+  --attr-elite: #0b5cad;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0f1115;
+    --surface: #171a21;
+    --surface-2: #1f232c;
+    --border: #2a2f3a;
+    --foreground: #e8eaf0;
+    --muted: #8a93a6;
+    --accent: #3ddc84;
+    --accent-fg: #06130b;
+    --attr-low: #f36c60;
+    --attr-mid: #f2b84b;
+    --attr-good: #4ade80;
+    --attr-elite: #60a5fa;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-attr-low: var(--attr-low);
+  --color-attr-mid: var(--attr-mid);
+  --color-attr-good: var(--attr-good);
+  --color-attr-elite: var(--attr-elite);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html, body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Tablas densas */
+.tbl {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+.tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 6px;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+}
+.tbl td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.tbl tbody tr:hover td {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.tbl .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
