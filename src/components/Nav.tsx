@@ -9,7 +9,7 @@ const LINKS: { href: string; label: string; soon?: boolean }[] = [
   { href: "/plantilla", label: "Plantilla" },
   { href: "/roles", label: "Roles" },
   { href: "/tactica", label: "Táctica" },
-  { href: "/rasgos", label: "Rasgos", soon: true },
+  { href: "/rasgos", label: "Rasgos" },
   { href: "/entrenamiento", label: "Entrenamiento", soon: true },
 ];
 

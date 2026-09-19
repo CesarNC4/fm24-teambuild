@@ -29,6 +29,8 @@ interface AppState {
   hydrated: boolean;
   tactics: Tactic[];
   activeTacticId: string | null;
+  /** uid → ids de rasgos que tiene el jugador (entrada manual). */
+  playerTraits: Record<string, string[]>;
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
@@ -39,6 +41,7 @@ interface AppState {
   updateTactic: (id: string, patch: Partial<Tactic> | ((t: Tactic) => Tactic)) => void;
   removeTactic: (id: string) => void;
   setActiveTactic: (id: string | null) => void;
+  setPlayerTraits: (uid: string, traitIds: string[]) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -51,6 +54,7 @@ export const useAppStore = create<AppState>()(
       hydrated: false,
       tactics: [],
       activeTacticId: null,
+      playerTraits: {},
 
       setPlayers: (source, players, meta) =>
         set((s) => ({
@@ -77,6 +81,7 @@ export const useAppStore = create<AppState>()(
           return { tactics, activeTacticId: s.activeTacticId === id ? (tactics[0]?.id ?? null) : s.activeTacticId };
         }),
       setActiveTactic: (activeTacticId) => set({ activeTacticId }),
+      setPlayerTraits: (uid, traitIds) => set((s) => ({ playerTraits: { ...s.playerTraits, [uid]: traitIds } })),
     }),
     {
       name: "fm24-assistant",
@@ -88,6 +93,7 @@ export const useAppStore = create<AppState>()(
         clubName: s.clubName,
         tactics: s.tactics,
         activeTacticId: s.activeTacticId,
+        playerTraits: s.playerTraits,
       }),
       onRehydrateStorage: () => (state) => {
         state?.markHydrated();
