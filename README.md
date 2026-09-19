@@ -14,8 +14,10 @@ en IndexedDB y nunca salen de tu máquina. Desplegable en Vercel sin backend.
 3. Súbelo en la pestaña **Importar**, revisa las columnas detectadas y guarda.
 
 La misma vista sirve para el primer equipo, los filiales (Sub-21, Sub-18,
-equipo B: se añaden en Importar con su edad máxima) y las búsquedas de
-ojeados. Además de los atributos, la vista recomendada incluye fecha de
+equipo B: se añaden en Importar con su edad máxima), las búsquedas de
+ojeados, toda la liga y la plantilla del próximo rival (se añade con
+«+ rival»; la pestaña **Rival** estima su XI, amenazas, debilidades,
+instrucciones de oposición y ajustes a tu táctica). Además de los atributos, la vista recomendada incluye fecha de
 nacimiento, tipo de contrato, cláusula, situación de fichaje/cesión, informe
 del cuerpo técnico (Idoneidad/Potencial), partidos, minutos, goles,
 asistencias, moral y condición: alimentan Juveniles, las charlas y las alertas
@@ -62,7 +64,9 @@ Si no quieres habilitar Corepack, antepón `corepack` a cada comando
 - `src/lib/fm/playerInstructions.ts` – instrucciones individuales y sugerencias por titular
 - `src/lib/fm/traits.ts` – catálogo de rasgos, compatibilidad por rol y sugerencias
 - `src/lib/fm/training.ts` – foco individual, calendario semanal y tutorías
-- `src/app/*` – páginas (Importar, Plantilla, Roles, Táctica, Rasgos, Entrenamiento)
+- `src/lib/fm/youth.ts`, `scouting.ts`, `history.ts`, `league.ts`, `radiography.ts`, `setpieces.ts` – juveniles, ojeados, evolución, liga, radiografía y balón parado
+- `src/lib/fm/rival.ts` – análisis del rival: XI probable, amenazas, debilidades, instrucciones de oposición, estilos contra él
+- `src/app/*` – páginas (Importar, Plantilla, Roles, Táctica, Rasgos, Entrenamiento, Juveniles, Ojeados, Balón parado, Rival, Radiografía, Comparar)
 
 ## Fuentes
 
@@ -75,8 +79,10 @@ jonasmorais (FM Scout) y el megapack de Passion4FM (carga semanal, rotación,
 semanas por objetivo); las personalidades y el trato con la prensa, la guía de
 personalidades de FM Scout (rangos de atributos ocultos); el módulo de
 juveniles, las guías de desarrollo juvenil de Passion4FM y FM Scout; el de
-ojeados, las guías de scouting y de fichajes de Passion4FM. Son consejos, no
-reglas del motor.
+ojeados, las guías de scouting y de fichajes de Passion4FM; las instrucciones
+de oposición, las reglas habituales de la comunidad (presión al que se atasca,
+nunca al rápido; marcaje al desmarcador, nunca al referencia; entradas duras
+al blando; conducir al pie malo). Son consejos, no reglas del motor.
 
 `refs/` (ignorado por git) contiene repositorios de la comunidad usados como
 referencia: FM24-Player-Analyzer (GPL-3), pyscoutfm (MIT), fm_player_ranking.

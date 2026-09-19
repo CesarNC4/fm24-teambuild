@@ -41,6 +41,7 @@ export default function ImportPage() {
   const updateSquad = useAppStore((s) => s.updateSquad);
   const removeSquad = useAppStore((s) => s.removeSquad);
   const [newSquad, setNewSquad] = useState("");
+  const [newRival, setNewRival] = useState("");
   const restoreBackup = useAppStore((s) => s.restoreBackup);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
 
@@ -103,7 +104,7 @@ export default function ImportPage() {
         <div className="space-y-4">
           <h1 className="text-2xl font-semibold">Importar exportación de FM24</h1>
           <ol className="text-sm text-muted list-decimal pl-5 space-y-1">
-            <li>En el juego, abre la vista de <b>Plantilla</b> (o la lista de ojeados, o una búsqueda de toda la liga) con una vista que muestre <b>todos los atributos</b>, posición, edad, personalidad, sueldo, valor y fin de contrato.</li>
+            <li>En el juego, abre la vista de <b>Plantilla</b> (o la lista de ojeados, una búsqueda de toda la liga, o la plantilla del próximo rival) con una vista que muestre <b>todos los atributos</b>, posición, edad, personalidad, sueldo, valor y fin de contrato.</li>
             <li>Pulsa <kbd className="px-1 rounded bg-surface-2 border border-border">Ctrl</kbd>+<kbd className="px-1 rounded bg-surface-2 border border-border">P</kbd> → <i>Página web</i> y guarda el archivo.</li>
             <li>Súbelo aquí. Revisa las columnas detectadas y guarda.</li>
           </ol>
@@ -132,13 +133,27 @@ export default function ImportPage() {
                 const name = newSquad.trim();
                 if (!name) return;
                 const m = /(\d{2})/.exec(name);
-                const id = addSquad({ name, maxAge: m ? Number(m[1]) : null, competitive: /\bB\b|filial|reserv/i.test(name) && !m });
+                const id = addSquad({ name, kind: "filial", maxAge: m ? Number(m[1]) : null, competitive: /\bB\b|filial|reserv/i.test(name) && !m });
                 setSource(id);
                 setNewSquad("");
               }}
             >
               <input className="bg-surface border border-border rounded px-2 py-0.5 w-32" placeholder="Sub-21, Sub-18, Equipo B…" value={newSquad} onChange={(e) => setNewSquad(e.target.value)} />
               <button className="px-2 py-0.5 rounded border border-border hover:bg-surface-2" type="submit">+ filial</button>
+            </form>
+            <form
+              className="flex items-center gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const name = newRival.trim();
+                if (!name) return;
+                const id = addSquad({ name, kind: "rival", maxAge: null, competitive: true });
+                setSource(id);
+                setNewRival("");
+              }}
+            >
+              <input className="bg-surface border border-border rounded px-2 py-0.5 w-32" placeholder="Próximo rival…" value={newRival} onChange={(e) => setNewRival(e.target.value)} />
+              <button className="px-2 py-0.5 rounded border border-border hover:bg-surface-2" type="submit">+ rival</button>
             </form>
           </div>
 
@@ -179,9 +194,9 @@ export default function ImportPage() {
                       borrar
                     </button>
                   )}
-                  {q.kind === "filial" && (
+                  {(q.kind === "filial" || q.kind === "rival") && (
                     <button className="text-xs text-muted hover:underline" onClick={() => { if (source === q.id) setSource("plantilla"); removeSquad(q.id); }}>
-                      quitar filial
+                      quitar {q.kind}
                     </button>
                   )}
                 </div>

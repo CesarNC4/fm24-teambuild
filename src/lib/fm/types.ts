@@ -90,13 +90,13 @@ export interface Player {
   isGoalkeeper: boolean;
 }
 
-/** Id de la fuente de importación: "plantilla", "ojeados" o un filial ("filial-…"). */
+/** Id de la fuente de importación: "plantilla", "ojeados", "liga", un filial ("filial-…") o un rival ("rival-…"). */
 export type ImportSource = string;
 
 export interface Squad {
   id: ImportSource;
   name: string;
-  kind: "primer" | "filial" | "ojeados" | "liga";
+  kind: "primer" | "filial" | "ojeados" | "liga" | "rival";
   /** Edad máxima del filial (Sub-18 → 18, Sub-21 → 21). null = sin límite (equipo B). */
   maxAge: number | null;
   /** true si juega una liga competitiva de verdad (equipo B), no liga juvenil. */

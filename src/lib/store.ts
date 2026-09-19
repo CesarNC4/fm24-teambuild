@@ -20,7 +20,7 @@ export interface ImportMeta {
   count: number;
 }
 
-/** Fuentes fijas; los filiales se añaden con addSquad. */
+/** Fuentes fijas; los filiales y los rivales se añaden con addSquad. */
 export const DEFAULT_SQUADS: Squad[] = [
   { id: "plantilla", name: "Primer equipo", kind: "primer", maxAge: null, competitive: true },
   { id: "ojeados", name: "Ojeados / búsqueda", kind: "ojeados", maxAge: null, competitive: false },
@@ -61,7 +61,7 @@ interface AppState {
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
-  addSquad: (s: Omit<Squad, "id" | "kind">) => string;
+  addSquad: (s: Omit<Squad, "id">) => string;
   updateSquad: (id: string, patch: Partial<Squad>) => void;
   removeSquad: (id: string) => void;
   setHeaderOverrides: (o: Record<string, string | null>) => void;
@@ -101,8 +101,8 @@ export const useAppStore = create<AppState>()(
           players: { ...s.players, [source]: players },
           imports: { ...s.imports, [source]: meta },
           clubName: source === "plantilla" ? (mostCommonClub(players) ?? s.clubName) : s.clubName,
-          // Los ojeados no cuentan: sus atributos vienen en rango y no son de tu club.
-          history: source === "ojeados" || source === "liga" ? s.history : appendSnapshots(s.history, players, meta.importedAt),
+          // Los ojeados, la liga y los rivales no cuentan: no son de tu club.
+          history: source === "ojeados" || source === "liga" || source.startsWith("rival-") ? s.history : appendSnapshots(s.history, players, meta.importedAt),
         })),
       clearSource: (source) =>
         set((s) => ({
@@ -110,9 +110,9 @@ export const useAppStore = create<AppState>()(
           imports: { ...s.imports, [source]: null },
         })),
       addSquad: (sq) => {
-        const id = `filial-${Date.now().toString(36)}`;
+        const id = `${sq.kind}-${Date.now().toString(36)}`;
         set((s) => ({
-          squads: [...s.squads, { ...sq, id, kind: "filial" }],
+          squads: [...s.squads, { ...sq, id }],
           players: { ...s.players, [id]: [] },
           imports: { ...s.imports, [id]: null },
         }));

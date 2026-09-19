@@ -14,6 +14,7 @@ const LINKS: { href: string; label: string; soon?: boolean }[] = [
   { href: "/juveniles", label: "Juveniles" },
   { href: "/ojeados", label: "Ojeados" },
   { href: "/balon-parado", label: "Balón parado" },
+  { href: "/rival", label: "Rival" },
   { href: "/radiografia", label: "Radiografía" },
   { href: "/comparar", label: "Comparar" },
 ];
