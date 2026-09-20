@@ -5,6 +5,7 @@ import { persist, createJSONStorage, type StateStorage } from "zustand/middlewar
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import type { ImportSource, Player, Squad } from "./fm/types";
 import type { Tactic } from "./fm/tactics";
+import { migrateInstructions } from "./fm/instructions";
 import { appendSnapshots, type History } from "./fm/history";
 
 /** Almacenamiento en IndexedDB (mucha más capacidad que localStorage). */
@@ -188,7 +189,9 @@ function normalizePersisted(p: Partial<PersistedState>): Partial<PersistedState>
   const players: Record<string, Player[]> = { ...(p.players ?? {}) };
   const imports: Record<string, ImportMeta | null> = { ...(p.imports ?? {}) };
   for (const q of squads) { players[q.id] ??= []; imports[q.id] ??= null; }
-  return { ...p, squads, players, imports, history: p.history ?? {}, targets: p.targets ?? {} };
+  // Instrucciones que ya no existen en FM24 (trampa del fuera de juego, marcaje estricto, anchura defensiva)
+  const tactics = (p.tactics ?? []).map((t) => ({ ...t, instructions: migrateInstructions(t.instructions ?? []) }));
+  return { ...p, squads, players, imports, tactics, history: p.history ?? {}, targets: p.targets ?? {} };
 }
 
 function mostCommonClub(players: Player[]): string | null {

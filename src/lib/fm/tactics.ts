@@ -402,7 +402,7 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
     if (pressing && codes.includes("A")) out.push({ level: "warn", text: "Ancla en un estilo de presión: se queda protegiendo la zona y deja huecos en la presión. Mejor Mediocentro defensivo o Recuperador." });
     if (waiting && (codes.includes("B2B") || codes.includes("BWM"))) out.push({ level: "info", text: "Box-to-box / Recuperador en un estilo de espera: persiguen al rival y rompen el bloque. Mediocentro defensivo, Ancla o Segundo volante encajan mejor." });
     const gk = entries.find((e) => e.slot.slot === "GK");
-    if (gk?.role.code === "SK" && (tactic.instructions.includes("linea-def-baja") || cbs.some((e) => e.role.duty === "Co"))) {
+    if (gk?.role.code === "SK" && ((tactic.instructions.includes("linea-def-baja") || tactic.instructions.includes("linea-def-mucho-mas-baja")) || cbs.some((e) => e.role.duty === "Co"))) {
       out.push({ level: "info", text: "Portero líbero con línea baja o un central en cobertura: no tiene espacio que cubrir. Con esa defensa rinde más el Portero clásico." });
     }
   }

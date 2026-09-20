@@ -1,10 +1,11 @@
 /**
- * Encaje de los estilos de juego con la plantilla (guía de estilos tácticos de
- * Passion4FM): atributos clave por unidad, formaciones recomendadas y roles
- * que le sientan bien o mal a cada estilo.
+ * Encaje de los estilos de juego con la plantilla: atributos clave por
+ * unidad, formaciones recomendadas, roles que le sientan bien o mal a cada
+ * estilo, y qué falta para «evolucionar» a él (roles-firma, atributos por
+ * línea, polivalencia).
  */
 
-import { STYLE_PRESETS, type StylePreset } from "./instructions";
+import { STYLE_PRESETS, type EvolutionReq, type StylePreset } from "./stylePresets";
 import type { LineupResult } from "./tactics";
 import type { Player, PositionSlot } from "./types";
 
@@ -36,6 +37,40 @@ export interface StyleFit {
   /** Roles del XI que el estilo desaconseja / pide, con el jugador. */
   avoided: { role: string; player: string }[];
   favored: number;
+  /** Requisitos de evolución y cuáles fallan. */
+  gaps: GapResult[];
+  missing: number;
+}
+
+export interface GapResult {
+  req: EvolutionReq;
+  ok: boolean;
+  detail: string;
+}
+
+/** Comprueba los requisitos de evolución de un estilo contra el XI. */
+export function styleGaps(style: StylePreset, lineup: LineupResult): GapResult[] {
+  const starters = lineup.slots.filter((s) => s.starter);
+  return style.evolution.map((req): GapResult => {
+    if (req.kind === "role") {
+      const have = starters.filter((s) => req.codes.includes(s.role.code));
+      const min = req.min ?? 1;
+      return { req, ok: have.length >= min, detail: have.length ? `tienes ${have.length}: ${have.map((s) => `${s.role.es} (${s.starter!.player.name})`).join(", ")}` : "nadie en el XI con ese rol" };
+    }
+    if (req.kind === "versatile") {
+      const poly = starters.filter((s) => s.slot.slot !== "GK" && s.starter!.player.position.slots.length >= 2);
+      return { req, ok: poly.length >= req.min, detail: `${poly.length} con dos o más posiciones${poly.length ? `: ${poly.map((s) => s.starter!.player.name).join(", ")}` : ""}` };
+    }
+    const pool = starters.filter((s) => req.positions === "xi" ? true : req.positions === "campo" ? s.slot.slot !== "GK" : req.positions.includes(s.slot.slot));
+    if (pool.length === 0) return { req, ok: false, detail: "ningún titular en esas posiciones" };
+    const each = pool.map((s) => ({ name: s.starter!.player.name, mean: meanAttrs([s.starter!.player], req.attrs) ?? 0 })).sort((a, b) => a.mean - b.mean);
+    if (req.count) {
+      const okOnes = each.filter((e) => e.mean >= req.min);
+      return { req, ok: okOnes.length >= req.count, detail: okOnes.length ? `${okOnes.map((e) => `${e.name} ${e.mean.toFixed(1)}`).join(", ")}` : `el mejor es ${each[each.length - 1].name} con ${each[each.length - 1].mean.toFixed(1)}` };
+    }
+    const mean = each.reduce((a, e) => a + e.mean, 0) / each.length;
+    return { req, ok: mean >= req.min, detail: `media ${mean.toFixed(1)}${mean < req.min ? ` (peor: ${each.slice(0, 2).map((e) => `${e.name} ${e.mean.toFixed(1)}`).join(", ")})` : ""}` };
+  });
 }
 
 export function styleFit(style: StylePreset, lineup: LineupResult): StyleFit {
@@ -55,6 +90,7 @@ export function styleFit(style: StylePreset, lineup: LineupResult): StyleFit {
     att: meanAttrs(byUnit.att, style.attrs.att),
   };
   const present = Object.values(units).filter((v): v is number => v != null);
+  const gaps = styleGaps(style, lineup);
   return {
     style,
     units,
@@ -62,6 +98,8 @@ export function styleFit(style: StylePreset, lineup: LineupResult): StyleFit {
     formationOk: style.formations.includes(lineup.formation.id),
     avoided,
     favored,
+    gaps,
+    missing: gaps.filter((g) => !g.ok).length,
   };
 }
 

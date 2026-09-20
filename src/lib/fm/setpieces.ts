@@ -34,7 +34,20 @@ export interface SetPiecePlan {
   edgeOfBox: Taker[];
   /** Marcadores aéreos en córners en contra. */
   aerialDefenders: Taker[];
+  /** Rutina de arrastre (PDF de balón parado): mejor rematador al primer palo, dos al segundo, uno alto estorbando al portero. */
+  routine: { nearPost: Taker | null; farPost: Taker[]; onKeeper: Taker | null; ideal: Taker[] };
   notes: string[];
+}
+
+/**
+ * Perfil del rematador ideal de córner (PDF de balón parado): Salto 16-17,
+ * Fuerza 15-16, Cabeceo 15 y más de 1,90; Anticipación y Colocación como
+ * secundarios. Devuelve 0-20 aproximado.
+ */
+export function headerProfile(p: Player): number {
+  const h = p.height ?? 180;
+  const heightScore = Math.max(0, Math.min(20, 8 + (h - 175) * 0.6));
+  return a(p, "Jum") * 0.3 + a(p, "Str") * 0.2 + a(p, "Hea") * 0.25 + heightScore * 0.15 + a(p, "Ant") * 0.05 + a(p, "Pos") * 0.05;
 }
 
 function starters(lineup: LineupResult): Player[] {
@@ -78,10 +91,16 @@ export function setPiecePlan(lineup: LineupResult): SetPiecePlan {
   const stayBack = top((p) => a(p, "Pac") * 0.4 + a(p, "Acc") * 0.3 + a(p, "Ant") * 0.3 - aerial(p) * 0.3, 2);
   const edgeOfBox = top((p) => a(p, "Lon") * 0.5 + a(p, "Fir") * 0.2 + a(p, "Tec") * 0.3 - aerial(p) * 0.2, 2, xi.filter((p) => !targetSet.has(p.uid)));
   const aerialDefenders = top((p) => a(p, "Hea") * 0.35 + a(p, "Jum") * 0.3 + a(p, "Mar") * 0.2 + a(p, "Str") * 0.15, 4);
+  // Rutina de arrastre
+  const ideal = top(headerProfile, 4);
+  const nearPost = ideal[0] ?? null;
+  const farPost = ideal.slice(1, 3);
+  const onKeeper = xi.filter((p) => !ideal.slice(0, 3).some((t) => t.player.uid === p.uid)).map((p) => ({ player: p, score: (p.height ?? 0) * 0.08 + a(p, "Str") * 0.5 + a(p, "Bra") * 0.3 })).sort((x, y) => y.score - x.score)[0] ?? null;
+  if (nearPost && headerProfile(nearPost.player) >= 16) notes.push(`${nearPost.player.name} tiene el perfil de rematador de córner del PDF (Salto ${a(nearPost.player, "Jum")}, Fuerza ${a(nearPost.player, "Str")}, Cabeceo ${a(nearPost.player, "Hea")}${nearPost.player.height ? `, ${nearPost.player.height} cm` : ""}): un central así vale 12+ goles por temporada. Rutina al primer palo con él y frecuencia alta.`);
   if (gk && a(gk, "Aer") < 11) notes.push(`${gk.name} tiene juego aéreo ${a(gk, "Aer")}: en córners en contra, marca al primer palo y en zona, no le dejes salir a por todo.`);
   else if (gk && a(gk, "Aer") >= 15) notes.push(`${gk.name} domina el área (${a(gk, "Aer")}): puede salir a los centros; marca en zona.`);
 
-  return { cornersLeft, cornersRight, freeKicksDirect, freeKicksIndirect, penalties, longThrows, aerialTargets, stayBack, edgeOfBox, aerialDefenders, notes };
+  return { cornersLeft, cornersRight, freeKicksDirect, freeKicksIndirect, penalties, longThrows, aerialTargets, stayBack, edgeOfBox, aerialDefenders, routine: { nearPost, farPost, onKeeper, ideal }, notes };
 }
 
 export interface CaptainCandidate {

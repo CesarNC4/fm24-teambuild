@@ -6,6 +6,7 @@ import type { AttrKey } from "./attributes";
 import type { RoleDef } from "./roles";
 import type { Player } from "./types";
 import { personalityTierLevel } from "./personalities";
+import { STYLE_BY_ID } from "./stylePresets";
 
 // ===========================================================================
 // Foco individual
@@ -183,6 +184,19 @@ const STYLE_SESSIONS: Record<string, { attack: string[]; defend: string[]; physi
   bandas: { attack: ["att-wings", "chance-creation", "chance-conversion", "att-shadow"], defend: ["def-wide", "def-shape", "transition-restrict", "def-shadow"], physical: ["quickness", "endurance"] },
   autobus: { attack: ["att-direct", "chance-conversion", "sp-attacking", "att-shadow"], defend: ["def-disengaged", "def-shape", "def-wide", "def-shadow"], physical: ["resistance", "endurance"] },
   catenaccio: { attack: ["att-direct", "att-wings", "chance-conversion", "att-shadow"], defend: ["def-shape", "def-disengaged", "transition-restrict", "def-shadow"], physical: ["resistance", "quickness"] },
+  "juego-posicion": { attack: ["att-patient", "att-movement", "chance-creation", "ball-retention"], defend: ["transition-press", "def-shape", "def-front", "def-shadow"], physical: ["endurance", "quickness"] },
+  "cebar-presion": { attack: ["ball-retention", "att-patient", "att-movement", "chance-creation"], defend: ["def-front", "transition-press", "def-shape", "def-shadow"], physical: ["endurance", "quickness"] },
+  relacionismo: { attack: ["att-movement", "ball-retention", "chance-creation", "att-patient"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "resistance"] },
+  "futbol-total": { attack: ["att-movement", "chance-creation", "att-wings", "att-shadow"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
+  "presion-hombre": { attack: ["att-direct", "att-movement", "chance-conversion", "att-shadow"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "resistance"] },
+  "gegenpress-vertical": { attack: ["att-direct", "chance-conversion", "att-movement", "att-shadow"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
+  "presion-dos-mediapuntas": { attack: ["att-movement", "chance-creation", "att-patient", "att-shadow"], defend: ["def-front", "transition-press", "def-shape", "def-shadow"], physical: ["endurance", "quickness"] },
+  "control-directo": { attack: ["att-direct", "att-patient", "chance-creation", "att-wings"], defend: ["def-front", "transition-press", "def-shape", "def-shadow"], physical: ["quickness", "endurance"] },
+  cholismo: { attack: ["att-direct", "chance-conversion", "sp-attacking", "att-shadow"], defend: ["def-shape", "def-engaged", "def-wide", "sp-defending"], physical: ["resistance", "endurance"] },
+  "contra-directo": { attack: ["att-direct", "chance-conversion", "att-movement", "att-shadow"], defend: ["def-shape", "def-engaged", "transition-restrict", "def-shadow"], physical: ["quickness", "resistance"] },
+  reactivo: { attack: ["att-direct", "chance-conversion", "att-movement", "att-shadow"], defend: ["def-shape", "def-disengaged", "transition-restrict", "def-shadow"], physical: ["quickness", "resistance"] },
+  "rombo-pragmatico": { attack: ["att-movement", "chance-creation", "att-direct", "att-shadow"], defend: ["def-shape", "transition-restrict", "def-engaged", "def-shadow"], physical: ["quickness", "endurance"] },
+  "carrileros-directos": { attack: ["att-wings", "att-direct", "chance-conversion", "att-shadow"], defend: ["def-wide", "def-shape", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
   default: { attack: ["att-movement", "chance-creation", "att-direct", "att-shadow"], defend: ["def-shape", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
 };
 
@@ -232,7 +246,9 @@ const GOAL_SESSIONS: Record<Exclude<WeekGoal, "normal">, { attack: string[]; def
  */
 export function buildWeek(opts: WeekOptions): DayPlan[] {
   const goal = opts.goal ?? "normal";
-  const base = STYLE_SESSIONS[opts.styleId === "directo" ? "bandas" : opts.styleId ?? "default"] ?? STYLE_SESSIONS.default;
+  // Estilos evolucionados sin sesiones propias heredan las del estilo padre
+  const sid = opts.styleId === "directo" ? "bandas" : opts.styleId ?? "default";
+  const base = STYLE_SESSIONS[sid] ?? STYLE_SESSIONS[STYLE_BY_ID[sid]?.parent ?? ""] ?? STYLE_SESSIONS.default;
   const st = goal === "normal" ? base : { ...base, ...GOAL_SESSIONS[goal] };
   const wk = opts.weekIndex ?? 0;
   const matchSet = new Set(opts.matchDays);

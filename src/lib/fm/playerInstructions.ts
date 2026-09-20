@@ -2,8 +2,9 @@
  * Instrucciones individuales de jugador de FM24 y sugerencias por titular.
  *
  * Catálogo según la guía de Passion4FM
- * (https://www.passion4fm.com/football-manager-player-instructions/): cada
- * instrucción con los atributos de los que depende y su grupo de exclusión.
+ * (https://www.passion4fm.com/football-manager-player-instructions/) con los
+ * nombres reales del panel de FM24 en español: cada instrucción con los
+ * atributos de los que depende y su grupo de exclusión.
  * Las sugerencias combinan rol, estilo de la táctica, atributos del jugador,
  * pie fuerte y rasgos (si un rasgo ya cubre la instrucción, es redundante; si
  * la contradice, se avisa).
@@ -13,7 +14,7 @@ import type { AttrKey } from "./attributes";
 import type { RoleDef } from "./roles";
 import { TRAIT_BY_ID, type TraitDef } from "./traits";
 import type { Player, PositionSlot } from "./types";
-import { styleTraits } from "./instructions";
+import { STYLE_BY_ID, styleTraits } from "./instructions";
 
 export type PIGroup =
   | "movimiento" | "anchura" | "canales" | "libertad" | "aguantar"
@@ -31,37 +32,37 @@ export interface PlayerInstruction {
 
 export const PLAYER_INSTRUCTIONS: PlayerInstruction[] = [
   // Movimiento
-  { id: "get-further-forward", es: "Incorporarse más al ataque", en: "Get Further Forward", group: "movimiento", attrs: ["OtB", "Sta", "Wor"] },
-  { id: "hold-position", es: "Mantener la posición", en: "Hold Position", group: "movimiento", attrs: ["Pos", "Cnt"] },
-  { id: "stay-wider", es: "Abrirse más", en: "Stay Wider", group: "anchura", attrs: ["Cro", "OtB"] },
-  { id: "sit-narrower", es: "Cerrarse más", en: "Sit Narrower", group: "anchura", attrs: ["OtB", "Tea"] },
-  { id: "move-into-channels", es: "Buscar los espacios", en: "Move Into Channels", group: "canales", attrs: ["OtB", "Acc", "Ant", "Dec"] },
-  { id: "roam", es: "Moverse libremente", en: "Roam From Position", group: "libertad", attrs: ["Fla", "Pos", "Dec"] },
+  { id: "get-further-forward", es: "Subir más", en: "Get Further Forward", group: "movimiento", attrs: ["OtB", "Sta", "Wor"] },
+  { id: "hold-position", es: "Mantener posición", en: "Hold Position", group: "movimiento", attrs: ["Pos", "Cnt"] },
+  { id: "stay-wider", es: "Abrirse a banda", en: "Stay Wider", group: "anchura", attrs: ["Cro", "OtB"] },
+  { id: "sit-narrower", es: "Cerrarse", en: "Sit Narrower", group: "anchura", attrs: ["OtB", "Tea"] },
+  { id: "move-into-channels", es: "Moverse entre líneas", en: "Move Into Channels", group: "canales", attrs: ["OtB", "Acc", "Ant", "Dec"] },
+  { id: "roam", es: "Variar la posición", en: "Roam From Position", group: "libertad", attrs: ["Fla", "Pos", "Dec"] },
   // Posesión
   { id: "hold-up-ball", es: "Aguantar el balón", en: "Hold Up Ball", group: "aguantar", attrs: ["Str", "Fir", "Ant"] },
-  { id: "shoot-more", es: "Tirar más a menudo", en: "Shoot More Often", group: "tiro", attrs: ["Lon", "Tec", "Dec"] },
-  { id: "shoot-less", es: "Tirar menos", en: "Shoot Less Often", group: "tiro", attrs: ["Dec", "Ant", "Vis"] },
+  { id: "shoot-more", es: "Disparar más a menudo", en: "Shoot More Often", group: "tiro", attrs: ["Lon", "Tec", "Dec"] },
+  { id: "shoot-less", es: "Disparar menos a menudo", en: "Shoot Less Often", group: "tiro", attrs: ["Dec", "Ant", "Vis"] },
   { id: "dribble-more", es: "Regatear más", en: "Dribble More", group: "regate", attrs: ["Dri", "Bal", "Fla", "Agi"] },
   { id: "dribble-less", es: "Regatear menos", en: "Dribble Less", group: "regate", attrs: ["Pas", "Tec", "Ant"] },
   { id: "run-wide", es: "Abrirse con el balón", en: "Run Wide With Ball", group: "conduccion", attrs: ["Dri", "Fla"] },
-  { id: "cut-inside", es: "Recortar hacia dentro con el balón", en: "Cut Inside With Ball", group: "conduccion", attrs: ["Dri", "Dec", "Fla"] },
+  { id: "cut-inside", es: "Recortar hacia dentro", en: "Cut Inside With Ball", group: "conduccion", attrs: ["Dri", "Dec", "Fla"] },
   // Distribución
   { id: "pass-shorter", es: "Pases más cortos", en: "Pass It Shorter", group: "longitud-pase", attrs: ["Pas", "Ant"] },
   { id: "more-direct-passes", es: "Pases más directos", en: "More Direct Passes", group: "longitud-pase", attrs: ["Pas", "Tec", "Dec"] },
-  { id: "more-risky-passes", es: "Pases más arriesgados", en: "More Risky Passes", group: "riesgo-pase", attrs: ["Dec", "Vis", "Pas", "Tec"] },
-  { id: "fewer-risky-passes", es: "Pases menos arriesgados", en: "Fewer Risky Passes", group: "riesgo-pase", attrs: ["Dec", "Pas"] },
+  { id: "more-risky-passes", es: "Tomar más riesgos", en: "More Risky Passes", group: "riesgo-pase", attrs: ["Dec", "Vis", "Pas", "Tec"] },
+  { id: "fewer-risky-passes", es: "Tomar menos riesgos", en: "Fewer Risky Passes", group: "riesgo-pase", attrs: ["Dec", "Pas"] },
   { id: "cross-more", es: "Centrar más a menudo", en: "Cross More Often", group: "centro-cuando", attrs: ["Cro", "Tec", "Ant"] },
-  { id: "cross-from-deep", es: "Centrar desde atrás", en: "Cross From Deep", group: "centro-cuando", attrs: ["Cro", "Tec"] },
-  { id: "cross-from-byline", es: "Centrar desde la línea de fondo", en: "Cross From Byline", group: "centro-cuando", attrs: ["Cro", "Acc", "Dri"] },
-  { id: "cross-aim-target", es: "Centrar al delantero referencia", en: "Cross Aim Target Man", group: "centro-donde", attrs: ["Cro"] },
+  { id: "cross-less", es: "Centrar menos a menudo", en: "Cross Less Often", group: "centro-cuando", attrs: ["Pas", "Dec"] },
+  { id: "cross-aim-target", es: "Centrar hacia el delantero objetivo", en: "Cross Aim Target Man", group: "centro-donde", attrs: ["Cro"] },
   { id: "cross-aim-far", es: "Centrar al segundo palo", en: "Cross Aim Far Post", group: "centro-donde", attrs: ["Cro"] },
   { id: "cross-aim-near", es: "Centrar al primer palo", en: "Cross Aim Near Post", group: "centro-donde", attrs: ["Cro"] },
+  { id: "cross-aim-centre", es: "Centrar al centro", en: "Cross Aim Centre", group: "centro-donde", attrs: ["Cro"] },
   // Defensa
-  { id: "close-down-more", es: "Presionar más", en: "Close Down More", group: "presion", attrs: ["Agg", "Dec", "Tck", "Sta", "Wor"] },
-  { id: "close-down-less", es: "Presionar menos", en: "Close Down Less", group: "presion", attrs: ["Pos", "Cnt", "Cmp", "Ant"] },
-  { id: "tackle-harder", es: "Entradas más duras", en: "Tackle Harder", group: "entradas", attrs: ["Tck", "Agg", "Bra", "Dec"] },
-  { id: "ease-off-tackles", es: "Entradas más suaves", en: "Ease Off Tackles", group: "entradas", attrs: ["Ant", "Cnt", "Tck"] },
-  { id: "tight-marking", es: "Marcaje más estricto", en: "Tight Marking", group: "marcaje", attrs: ["Mar", "Str", "Cnt"] },
+  { id: "close-down-more", es: "Activar presión: más", en: "Close Down More", group: "presion", attrs: ["Agg", "Dec", "Tck", "Sta", "Wor"] },
+  { id: "close-down-less", es: "Activar presión: menos", en: "Close Down Less", group: "presion", attrs: ["Pos", "Cnt", "Cmp", "Ant"] },
+  { id: "tackle-harder", es: "Entrar más duro", en: "Tackle Harder", group: "entradas", attrs: ["Tck", "Agg", "Bra", "Dec"] },
+  { id: "ease-off-tackles", es: "Suavizar entradas", en: "Ease Off Tackles", group: "entradas", attrs: ["Ant", "Cnt", "Tck"] },
+  { id: "tight-marking", es: "Marcajes más férreos", en: "Tight Marking", group: "marcaje", attrs: ["Mar", "Str", "Cnt"] },
   // Portero
   { id: "gk-quick-throws", es: "Saques de mano rápidos", en: "Take Quick Throws", group: "gk-distribucion", attrs: ["Thr", "Ant"], gk: true },
   { id: "gk-long-kicks", es: "Saques largos", en: "Take Long Kicks", group: "gk-distribucion", attrs: ["Kic", "Tec", "Dec"], gk: true },
@@ -94,6 +95,8 @@ export interface PIContext {
   teamRoles: RoleDef[];
   /** Mejor cabeceador entre los delanteros (Hea+Jum media). */
   strikerAerial: number;
+  /** Mejor cabeceador entre los jugadores de banda contraria (para centrar al segundo palo). */
+  farPostAerial?: number;
 }
 
 const COUNTER_STYLES = { has: (s: string) => styleTraits(s).counter && !styleTraits(s).possession };
@@ -206,16 +209,15 @@ export function suggestPlayerInstructions(p: Player, ctx: PIContext): PISuggesti
   if (isWide && !NO_CROSS_ROLES.has(code) && a(p, "Cro") >= 14 && ctx.strikerAerial >= 14) {
     add("cross-more", `Centros ${a(p, "Cro")} y delantera con juego aéreo (${ctx.strikerAerial.toFixed(0)})`, 3);
   }
-  if ((slot === "DL" || slot === "DR" || slot === "WBL" || slot === "WBR") && duty !== "A" && a(p, "Cro") >= 13 && (DEEP_STYLES.has(style) || style === "transiciones")) {
-    add("cross-from-deep", `Centros ${a(p, "Cro")} desde posición retrasada sin exponerse`, 1);
-  }
-  if (isWide && duty === "A" && a(p, "Cro") >= 13 && a(p, "Acc") >= 14 && a(p, "Dri") >= 13) {
-    add("cross-from-byline", `Aceleración ${a(p, "Acc")}, Regate ${a(p, "Dri")}: llega a línea de fondo`, 2);
+  if (isWide && !NO_CROSS_ROLES.has(code) && a(p, "Cro") <= 10 && (a(p, "Pas") >= 12 || a(p, "Dri") >= 13)) {
+    add("cross-less", `Centros ${a(p, "Cro")}: que combine o conduzca en vez de centrar`, 2);
   }
   if (isWide && !NO_CROSS_ROLES.has(code) && ctx.teamRoles.some((r) => TARGET_ROLES.has(r.code)) && a(p, "Cro") >= 12) {
     add("cross-aim-target", "hay un delantero referencia en el XI", 2);
   } else if (isWide && !NO_CROSS_ROLES.has(code) && ctx.strikerAerial >= 15 && a(p, "Cro") >= 13) {
-    add("cross-aim-far", `delantero con gran juego aéreo (${ctx.strikerAerial.toFixed(0)}): balón colgado al segundo palo`, 1);
+    add("cross-aim-centre", `delantero con gran juego aéreo (${ctx.strikerAerial.toFixed(0)}): balón al centro del área`, 1);
+  } else if (isWide && !NO_CROSS_ROLES.has(code) && (ctx.farPostAerial ?? 0) >= 14 && a(p, "Cro") >= 13) {
+    add("cross-aim-far", `el extremo contrario cabecea bien (${ctx.farPostAerial!.toFixed(0)}): balón al segundo palo`, 1);
   }
 
   // ---- Defensa
@@ -235,6 +237,22 @@ export function suggestPlayerInstructions(p: Player, ctx: PIContext): PISuggesti
   }
   if ((slot === "DC" || slot === "DL" || slot === "DR") && a(p, "Mar") >= 14 && a(p, "Str") >= 13 && a(p, "Cnt") >= 12 && (DEEP_STYLES.has(style) || code === "CD" || code === "NCB")) {
     add("tight-marking", `Marcaje ${a(p, "Mar")}, Fuerza ${a(p, "Str")}: anula a su par`, 1);
+  }
+
+  // ---- Lo que pide el estilo (roles-firma, estáticos/móviles, hombre a hombre)
+  const preset = STYLE_BY_ID[style];
+  if (preset) {
+    for (const spi of preset.pis ?? []) {
+      if (!spi.roles.includes(code) || !PI_BY_ID[spi.pi]) continue;
+      if (spi.pi === "cut-inside" && isWide && side && footWeak(side === "R" ? p.leftFoot : p.rightFoot)) continue;
+      add(spi.pi, `${preset.name}: ${spi.why}`, 2);
+    }
+    if (preset.staticRoles?.includes(code) && !isDef && duty !== "A") add("hold-position", `${preset.name}: área de cooperación, sostiene la estructura`, 1);
+    if (preset.mobileRoles?.includes(code) && a(p, "Dec") >= 12) add("roam", `${preset.name}: área de ayuda mutua, se acerca al balón`, 2);
+    if (preset.manMarking && (isDef || slot === "DM" || slot === "MC")) {
+      if (a(p, "Mar") >= 13) add("tight-marking", `${preset.name}: marcaje al hombre (Mar ${a(p, "Mar")})`, 2);
+      else add("close-down-less", `Marcaje ${a(p, "Mar")}: en un estilo de marcaje al hombre, mejor que espere colocado que pegado a su par`, 1);
+    }
   }
 
   return finalize(out, ctx.traitIds);

@@ -73,6 +73,17 @@ export default function SetPiecesPage() {
       </section>
 
       <section className="space-y-2">
+        <h2 className="font-semibold text-sm">Rutina de córner recomendada (arrastre)</h2>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <TakerList title="Primer palo" takers={plan.routine.nearPost ? [plan.routine.nearPost] : []} hint="El mejor perfil (Salto, Fuerza, Cabeceo, altura): la rutina principal va a él." />
+          <TakerList title="Segundo palo (dos)" takers={plan.routine.farPost} hint="Dos buenos rematadores que arrastran marcadores y reciben la prolongación." />
+          <TakerList title="Estorbar al portero" takers={plan.routine.onKeeper ? [plan.routine.onKeeper] : []} hint="Alto, fuerte y valiente, pegado al portero." />
+          <TakerList title="Perfil ideal (0-20)" takers={plan.routine.ideal} hint="Salto 16-17, Fuerza 15-16, Cabeceo 15 y más de 1,90. En el creador de balón parado: varias rutinas con frecuencia (primer palo alta, segundo palo media, en corto baja); el motor la respeta." />
+        </div>
+        <p className="text-xs text-muted">Contra cada rival, la pestaña Rival dice a qué palo insistir según la altura y el cabeceo de sus defensas.</p>
+      </section>
+
+      <section className="space-y-2">
         <h2 className="font-semibold text-sm">Córners a favor y en contra</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
           <TakerList title="Rematadores (a favor)" takers={plan.aerialTargets} hint="Cabeceo + salto + fuerza: al primer palo el mejor, al segundo el siguiente, y uno al punto de penalti." />

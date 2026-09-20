@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { FORMATIONS } from "@/lib/fm/formations";
-import { INSTRUCTION_BY_ID } from "@/lib/fm/instructions";
+import { INSTRUCTION_BY_ID, STYLE_BY_ID, styleLevers } from "@/lib/fm/instructions";
 import { buildLeagueStats } from "@/lib/fm/league";
 import { POSITION_LABEL, roleLabel } from "@/lib/fm/roles";
 import {
-  THREAT_LABEL, oppositionInstructions, rankStylesVsRival, rivalLeagueLevels, rivalLineup, rivalThreats, rivalWeaknesses, unitDuels, type Tweak,
+  THREAT_LABEL, oppositionInstructions, rankStylesVsRival, rivalCornerPlan, rivalLeagueLevels, rivalLineup, rivalPressPlan, rivalThreats, rivalWeaknesses, unitDuels, type Tweak,
 } from "@/lib/fm/rival";
 import { buildLineup, poolPlayers, type Tactic } from "@/lib/fm/tactics";
 import { useAppStore } from "@/lib/store";
@@ -48,7 +48,9 @@ export default function RivalPage() {
 
   const rl = useMemo(() => (rivalPlayers.length >= 11 ? rivalLineup(rivalPlayers, formationId || null) : null), [rivalPlayers, formationId]);
   const threats = useMemo(() => (rl ? rivalThreats(rl) : []), [rl]);
-  const ois = useMemo(() => (rl ? oppositionInstructions(rl) : []), [rl]);
+  const ois = useMemo(() => (rl ? oppositionInstructions(rl, ours) : []), [rl, ours]);
+  const press = useMemo(() => (rl ? rivalPressPlan(rl) : null), [rl]);
+  const corners = useMemo(() => (rl ? rivalCornerPlan(rl) : null), [rl]);
   const weaknesses = useMemo(() => (rl ? rivalWeaknesses(rl, ours) : []), [rl, ours]);
   const styles = useMemo(() => (rl ? rankStylesVsRival(rl, ours) : []), [rl, ours]);
   const duels = useMemo(() => (rl ? unitDuels(ours, rl) : []), [rl, ours]);
@@ -74,9 +76,25 @@ export default function RivalPage() {
       const instr = INSTRUCTION_BY_ID[id];
       let next = t.instructions.filter((x) => x !== id && !tw.remove?.includes(x));
       if (instr.group) next = next.filter((x) => INSTRUCTION_BY_ID[x].group !== instr.group);
-      return { ...t, instructions: [...next, id], styleId: null };
+      return { ...t, instructions: [...next, id] };
     });
   };
+  const applyIds = (ids: string[], remove: string[]) => {
+    if (!tactic) return;
+    updateTactic(tactic.id, (t) => {
+      let next = t.instructions.filter((x) => !remove.includes(x));
+      for (const id of ids) {
+        const instr = INSTRUCTION_BY_ID[id];
+        if (!instr) continue;
+        next = next.filter((x) => x !== id && (!instr.group || INSTRUCTION_BY_ID[x]?.group !== instr.group));
+        next.push(id);
+      }
+      return { ...t, instructions: next };
+    });
+  };
+  const levers = styleLevers(tactic?.styleId);
+  const styleName = tactic?.styleId ? STYLE_BY_ID[tactic.styleId]?.name : null;
+  const bloqueSegunRival = !!tactic?.styleId && !!STYLE_BY_ID[tactic.styleId]?.bloqueSegunRival;
   const isActive = (tw: Tweak) => !!tw.instructionId && !!tactic?.instructions.includes(tw.instructionId);
   const keyTweaks = weaknesses.flatMap((w) => w.tweaks).filter((t) => t.level === "clave" && t.instructionId);
   const createVariant = () => {
@@ -89,7 +107,7 @@ export default function RivalPage() {
       if (instr.group) instructions = instructions.filter((x) => INSTRUCTION_BY_ID[x].group !== instr.group);
       instructions.push(id);
     }
-    const t: Tactic = { ...tactic, id: `t-${Date.now().toString(36)}`, name: `${tactic.name} vs ${rival.name}`, instructions, styleId: null, locks: { ...tactic.locks } };
+    const t: Tactic = { ...tactic, id: `t-${Date.now().toString(36)}`, name: `${tactic.name} vs ${rival.name}`, instructions, locks: { ...tactic.locks } };
     addTactic(t);
     setTacticId(t.id);
   };
@@ -220,14 +238,71 @@ export default function RivalPage() {
             </div>
           ))}
         </div>
-        <p className="text-xs text-muted">«Aplicar» cambia la táctica elegida (y desvincula su estilo). Para no tocar la base, duplica la táctica con los ajustes clave y usa la copia solo en este partido.</p>
+        <p className="text-xs text-muted">«Aplicar» cambia la táctica elegida (el estilo se conserva como base y aparece como «ajustado»). Para no tocar la base, duplica la táctica con los ajustes clave y usa la copia solo en este partido.</p>
       </section>
+
+      {press && (
+        <section className="space-y-2">
+          <h2 className="font-semibold text-sm">Bloque y gatillo contra su salida{bloqueSegunRival ? <span className="text-muted font-normal"> · {styleName} juega con bloque según rival</span> : ""}</h2>
+          <div className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
+            <div><b>Bloque {press.bloque} · Activar presión {press.gatillo}</b> <span className="text-muted">(Serenidad/Decisiones de su salida: {press.composure?.toFixed(1) ?? "–"})</span></div>
+            <p className="whitespace-normal text-muted">{press.reason}</p>
+            {tactic && press.instructions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-muted">{press.instructions.map((i) => INSTRUCTION_BY_ID[i]?.name ?? i).join(" + ")}</span>
+                {press.instructions.every((i) => tactic.instructions.includes(i))
+                  ? <span className="text-attr-good">✓ activo</span>
+                  : <button className="text-accent hover:underline" onClick={() => applyIds(press.instructions, press.remove)}>aplicar</button>}
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-muted">Matriz de DarkHorse: el gatillo alto solo fuerza errores en rivales con poca Serenidad y Decisiones; contra una salida serena, presionar mucho abre espacio a tu espalda.</p>
+        </section>
+      )}
+
+      {tactic && (
+        <section className="space-y-2">
+          <h2 className="font-semibold text-sm">Palancas en directo{styleName ? <span className="text-muted font-normal"> · {styleName}</span> : ""}</h2>
+          <div className="overflow-auto border border-border rounded-md">
+            <table className="tbl w-full">
+              <thead><tr><th>Qué ves</th><th>Palanca</th><th>Efecto y contraindicación</th><th></th></tr></thead>
+              <tbody>
+                {levers.map((l, i) => {
+                  const active = !!l.instruction && tactic.instructions.includes(l.instruction);
+                  const canApply = (l.instruction && !active) || (!l.instruction && l.remove?.some((r) => tactic.instructions.includes(r)));
+                  return (
+                    <tr key={i}>
+                      <td className="whitespace-normal">{l.symptom}</td>
+                      <td className="whitespace-normal font-medium">{l.instruction ? INSTRUCTION_BY_ID[l.instruction]?.name ?? l.instruction : l.label}</td>
+                      <td className="text-xs text-muted whitespace-normal">{l.effect}</td>
+                      <td className="whitespace-nowrap text-xs">{active ? <span className="text-attr-good">✓ activa</span> : canApply ? <button className="text-accent hover:underline" onClick={() => applyIds(l.instruction ? [l.instruction] : [], l.remove ?? [])}>aplicar</button> : ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted">Primero mirar los highlights, luego tocar una sola cosa (04texag). Las primeras filas son las del estilo de la táctica; el resto valen para cualquiera.</p>
+        </section>
+      )}
+
+      {corners && (
+        <section className="space-y-2">
+          <h2 className="font-semibold text-sm">Córners contra ellos</h2>
+          <div className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
+            <div><b>Insistir al {corners.post}</b></div>
+            <p className="whitespace-normal text-muted">{corners.reason}</p>
+            <p className="whitespace-normal text-muted">Sus mejores por arriba: {corners.defenders.slice(0, 3).map((d) => `${d.player.name} (Cab/Sal ${d.aerial.toFixed(1)}${d.height ? `, ${d.height} cm` : ""})`).join(", ")}. El más flojo: {corners.weakest ? `${corners.weakest.player.name} (${corners.weakest.aerial.toFixed(1)})` : "—"}.</p>
+          </div>
+          <p className="text-xs text-muted">Rutina de arrastre: tu mejor rematador al primer palo, dos buenos al segundo para llevarse marcadores y uno alto estorbando al portero (ver Balón parado). Si ponen jugadores de 1,88 en el segundo palo, insistir ahí es inútil.</p>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="font-semibold text-sm">Instrucciones de oposición</h2>
         <div className="overflow-auto border border-border rounded-md">
           <table className="tbl w-full">
-            <thead><tr><th>Pos</th><th>Jugador</th><th>Presionar</th><th>Marcaje estricto</th><th>Entradas</th><th>Conducir al pie</th><th>Por qué</th></tr></thead>
+            <thead><tr><th>Pos</th><th>Jugador</th><th>Presionar</th><th>Marcajes férreos</th><th>Entradas</th><th>Conducir al pie</th><th>Por qué</th></tr></thead>
             <tbody>
               {ois.map((o) => (
                 <tr key={o.player.uid}>
@@ -244,7 +319,7 @@ export default function RivalPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-muted">Solo los que merecen instrucción; al resto no le pongas nada (demasiadas instrucciones descolocan a tu defensa). «Nunca» presionar al rápido con balón, «siempre» al que se atasca; marcaje estricto al desmarcador flojo, nunca al referencia fuerte; entradas duras al blando, suaves al ágil que saca faltas.</p>
+        <p className="text-xs text-muted">Solo los que merecen instrucción; al resto no le pongas nada (demasiadas instrucciones descolocan a tu defensa). «Nunca» presionar al rápido con balón, «siempre» al que se atasca; marcajes férreos al desmarcador flojo (solo si tu marcador tiene Marcaje para aguantarlo), nunca al referencia fuerte; entradas duras al blando, suaves al ágil que saca faltas.</p>
       </section>
 
       <section className="space-y-2">

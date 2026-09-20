@@ -6,6 +6,7 @@ import { ATTR_BY_KEY } from "@/lib/fm/attributes";
 import { CLUB_UNIT_LABEL, FAMILY_LABEL, buildLeagueStats, clubComparison, leagueClubs, type ClubUnit } from "@/lib/fm/league";
 import { UNIT_LABEL, ageProfile, contractTimeline, leagueComparison, radiographyWarnings, unitProfiles, wageSummary } from "@/lib/fm/radiography";
 import { fmtMoney, overpaidPlayers } from "@/lib/fm/scouting";
+import { rankStyles } from "@/lib/fm/styles";
 import { buildLineup } from "@/lib/fm/tactics";
 import { estimateGameYear } from "@/lib/fm/youth";
 import { useAppStore } from "@/lib/store";
@@ -45,6 +46,7 @@ export default function RadiographyPage() {
   const contracts = useMemo(() => contractTimeline(firstTeam, lineup), [firstTeam, lineup]);
   const wages = useMemo(() => wageSummary(firstTeam), [firstTeam]);
   const overpaid = useMemo(() => (lineup ? overpaidPlayers(firstTeam, lineup) : []), [firstTeam, lineup]);
+  const styleReach = useMemo(() => (lineup ? rankStyles(lineup).filter((f) => f.gaps.length > 0).sort((a, b) => a.missing - b.missing || (b.mean ?? 0) - (a.mean ?? 0)) : []), [lineup]);
   const leagueCmp = useMemo(() => (league ? leagueComparison(firstTeam, league, lineup) : null), [firstTeam, league, lineup]);
   const clubs = useMemo(() => leagueClubs(leaguePlayers), [leaguePlayers]);
   const [clubUnit, setClubUnit] = useState<ClubUnit>("todos");
@@ -72,6 +74,24 @@ export default function RadiographyPage() {
         <section className="bg-surface border border-border rounded-lg p-3 space-y-1">
           <h2 className="font-semibold text-sm">Avisos</h2>
           {warnings.map((w, i) => <p key={i} className="text-xs">⚠ {w}</p>)}
+        </section>
+      )}
+
+      {styleReach.length > 0 && (
+        <section className="bg-surface border border-border rounded-lg p-3 space-y-2">
+          <h2 className="font-semibold text-sm">A cuántos pasos estás de cada estilo</h2>
+          <div className="grid md:grid-cols-2 gap-x-6 gap-y-1 text-xs">
+            {styleReach.map((f) => (
+              <div key={f.style.id} className="flex items-baseline gap-2 min-w-0">
+                <span className={`font-mono whitespace-nowrap ${f.missing === 0 ? "text-attr-good" : f.missing === 1 ? "text-attr-mid" : "text-attr-low"}`}>{f.missing}/{f.gaps.length}</span>
+                <span className="min-w-0">
+                  <b>{f.style.name}</b>{tactic?.styleId === f.style.id ? <span className="text-muted"> (actual)</span> : ""}
+                  {f.missing > 0 && <span className="text-muted"> — falta: {f.gaps.filter((g) => !g.ok).map((g) => g.req.label).join("; ")}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted">Requisitos de evolución de cada estilo (roles-firma en el XI, atributos por línea, polivalencia) con el XI de {tactic?.name ?? "la táctica activa"}. Los que faltan por rol se arreglan en Táctica; los de atributos, en Ojeados.</p>
         </section>
       )}
 

@@ -16,7 +16,7 @@
 
 import type { AttrKey } from "./attributes";
 import { FORMATION_BY_ID, FORMATIONS, type Formation } from "./formations";
-import { INSTRUCTION_BY_ID, STYLE_PRESETS, type StylePreset } from "./instructions";
+import { INSTRUCTION_BY_ID, STYLE_PRESETS, styleTraits, type StylePreset } from "./instructions";
 import { familyOf, leagueLevelPercentile, type LeagueStats } from "./league";
 import { CLUSTERS, unitOfSlot, type Unit, UNIT_LABEL } from "./radiography";
 import { bestRoles } from "./scoring";
@@ -150,8 +150,11 @@ export function footLevel(s: string | null): number | null {
   return null;
 }
 
-export function oppositionInstructions(rl: RivalLineup): OppositionInstruction[] {
+export function oppositionInstructions(rl: RivalLineup, ours: LineupResult | null = null): OppositionInstruction[] {
   const out: OppositionInstruction[] = [];
+  // Nuestros marcadores: si no tienen Marcaje para aguantar pegados, el marcaje férreo regala el giro (PDF de instrucciones de jugador)
+  const ourMarkers = ours ? starters(ours).filter((x) => ["DC", "DL", "DR", "WBL", "WBR", "DM"].includes(x.slot)).map((x) => x.player) : [];
+  const ourMarking = ourMarkers.length ? Math.max(...ourMarkers.map((x) => a(x, "Mar"))) : null;
   for (const s of starters(rl.lineup)) {
     const p = s.player;
     if (p.isGoalkeeper) continue;
@@ -168,7 +171,10 @@ export function oppositionInstructions(rl: RivalLineup): OppositionInstruction[]
 
     const targetMan = a(p, "Str") >= 15 && a(p, "Jum") >= 14;
     if (unit === "att" && targetMan) { oi.tightMarking = "no"; reasons.push(`gana el cuerpo a cuerpo (Fue ${a(p, "Str")}, Sal ${a(p, "Jum")}): defiende el espacio, no al hombre`); }
-    else if (unit === "att" && a(p, "OtB") >= 14 && a(p, "Str") <= 12) { oi.tightMarking = "si"; reasons.push(`vive del desmarque (Des ${a(p, "OtB")}) y es flojo físicamente (Fue ${a(p, "Str")}): pegado no aparece`); }
+    else if (unit === "att" && a(p, "OtB") >= 14 && a(p, "Str") <= 12) {
+      if (ourMarking != null && ourMarking <= 11 && a(p, "OtB") >= 15) { oi.tightMarking = "no"; reasons.push(`vive del desmarque (Des ${a(p, "OtB")}) pero tus marcadores tienen Marcaje ≤ ${ourMarking}: pegado le regalas el giro; defiende el espacio`); }
+      else { oi.tightMarking = "si"; reasons.push(`vive del desmarque (Des ${a(p, "OtB")}) y es flojo físicamente (Fue ${a(p, "Str")}): pegado no aparece`); }
+    }
     else if (unit !== "def" && avg(p, ["Vis", "Pas", "Tec"]) >= 15 && !fastDribbler) { oi.tightMarking = "si"; reasons.push("organizador: que reciba siempre con alguien encima"); }
 
     const soft = a(p, "Bra") <= 10 || (a(p, "Bal") <= 10 && a(p, "Str") <= 12);
@@ -303,7 +309,7 @@ export function rivalWeaknesses(rl: RivalLineup, ours: LineupResult | null): Riv
       text: `Salida de balón floja (defensa ${f1(r.defOnBall)}, medio ${f1(r.midOnBall)} en serenidad/toque/pase).`,
       tweaks: [
         tweak("linea-presion-alta", "roban arriba y encuentras la portería cerca", "clave", ["linea-presion-baja", "linea-presion-media"]),
-        tweak("presionar-mas", "el error llega con la presión", "clave", ["presionar-menos"]),
+        tweak("presionar-mas", "el error llega con la presión", "clave", ["presionar-menos", "presionar-mucho-menos"]),
         tweak("contrapresionar", "al perderla, encima otra vez", "util", ["reagruparse"]),
         tweak("impedir-saque-corto", "sin salida corta se tiran al largo", "util"),
       ],
@@ -323,24 +329,25 @@ export function rivalWeaknesses(rl: RivalLineup, ours: LineupResult | null): Riv
     out.push({
       text: `Ataque rápido (Vel/Ace ${f1(r.attSpeed)}${ourDefSpeed != null ? ` frente a ${f1(ourDefSpeed)} de tus centrales` : ""}).`,
       tweaks: [
-        tweak("linea-def-baja", "sin espacio a la espalda no hay carrera", "clave", ["linea-def-alta", "fuera-de-juego"]),
+        tweak("linea-def-baja", "sin espacio a la espalda no hay carrera", "clave", ["linea-def-alta", "linea-def-mucho-mas-alta", "adelantarse-mas"]),
+        tweak("retroceder-mas", "la línea cede metros antes de que arranquen", "util", ["adelantarse-mas"]),
         tweak(null, "un central en cobertura y el lateral del lado de su extremo rápido en defender", "util", undefined, "Rol: central de cobertura"),
       ],
     });
   } else if (r.attSpeed != null && r.attSpeed <= 12.5 && ourDefSpeed != null && ourDefSpeed >= 13) {
-    out.push({ text: `Ataque lento (Vel/Ace ${f1(r.attSpeed)}): puedes subir la línea sin miedo.`, tweaks: [tweak("linea-def-alta", "acorta el campo y ahoga su salida", "util", ["linea-def-baja"]), tweak("fuera-de-juego", "no tienen quien gane la carrera", "util")] });
+    out.push({ text: `Ataque lento (Vel/Ace ${f1(r.attSpeed)}): puedes subir la línea sin miedo.`, tweaks: [tweak("linea-def-alta", "acorta el campo y ahoga su salida", "util", ["linea-def-baja", "linea-def-mucho-mas-baja"]), ...(r.att.length <= 1 ? [tweak("adelantarse-mas", "no tienen quien gane la carrera y juegan con un solo punta (04texag: nunca contra dos)", "util", ["retroceder-mas"])] : [])] });
   }
   // Ataque aéreo → anchura amplia y marcadores
   if (r.attAerial != null && (r.attAerial >= 14.5 || (ourDefAerial != null && r.attAerial - ourDefAerial >= 1.5))) {
     out.push({
       text: `Peligro por arriba (Cab/Sal ${f1(r.attAerial)}${ourDefAerial != null ? ` frente a ${f1(ourDefAerial)} de tus centrales` : ""}).`,
       tweaks: [
-        tweak("anchura-def-amplia", "corta los centros en origen", "clave", ["anchura-def-estrecha"]),
+        tweak("evitar-centros", "corta los centros en origen", "clave", ["permitir-centros"]),
         tweak(null, "en córners en contra, tus mejores marcadores aéreos sobre sus rematadores (ver Balón parado)", "clave", undefined, "Balón parado: marcajes"),
       ],
     });
   } else if (r.attAerial != null && r.attAerial <= 12) {
-    out.push({ text: `Ataque sin juego aéreo (Cab/Sal ${f1(r.attAerial)}).`, tweaks: [tweak("anchura-def-estrecha", "invítales a centrar: no lo van a rematar", "util", ["anchura-def-amplia"])] });
+    out.push({ text: `Ataque sin juego aéreo (Cab/Sal ${f1(r.attAerial)}).`, tweaks: [tweak("permitir-centros", "invítales a centrar: no lo van a rematar", "util", ["evitar-centros"])] });
   }
   // Laterales flojos → explotar banda (su izquierda es tu derecha)
   const backLevel = (p: Player | null) => (p ? (bestRoles(p, 1)[0]?.score ?? 0) : null);
@@ -383,7 +390,7 @@ export function rankStylesVsRival(rl: RivalLineup, ours: LineupResult | null): S
     const fit = ours ? styleFit(style, ours).mean : null;
     let m = 0;
     const reasons: string[] = [];
-    const t = style.traits;
+    const t = styleTraits(style.id);
     const buildup = r.defOnBall != null && r.midOnBall != null ? (r.defOnBall + r.midOnBall) / 2 : null;
     if (t.pressing) {
       if (buildup != null && buildup <= 12.5) { m += 1.5; reasons.push("su salida de balón es floja: la presión roba arriba"); }
@@ -448,3 +455,67 @@ export function rivalLeagueLevels(rl: RivalLineup, league: LeagueStats | null): 
 }
 
 export { UNIT_LABEL };
+
+// ---------------------------------------------------------------------------
+// Bloque y gatillo según su serenidad (matriz de DarkHorse: gatillo × Ser/Dec)
+// ---------------------------------------------------------------------------
+
+export interface PressPlan {
+  /** Serenidad/Decisiones media de su salida (portero, defensa y medio). */
+  composure: number | null;
+  bloque: string;
+  gatillo: string;
+  reason: string;
+  instructions: string[];
+  remove: string[];
+}
+
+export function rivalPressPlan(rl: RivalLineup): PressPlan {
+  const r = rivalProfile(rl);
+  const pool = [...(r.gk ? [r.gk] : []), ...r.def, ...r.mid];
+  const composure = meanOf(pool, ["Cmp", "Dec"]);
+  if (composure == null) return { composure, bloque: "medio", gatillo: "estándar", reason: "sin datos suficientes", instructions: [], remove: [] };
+  if (composure <= 12.5) return {
+    composure, bloque: "alto", gatillo: "mucho más",
+    reason: `su salida tiene Serenidad/Decisiones ${f1(composure)}: el gatillo alto fuerza el error. Con Contrapresión y Evitar pases en corto del portero.`,
+    instructions: ["linea-presion-alta", "presionar-mucho-mas", "contrapresionar", "impedir-saque-corto"],
+    remove: ["linea-presion-baja", "linea-presion-media", "presionar-menos", "presionar-mucho-menos", "presionar-mas", "reagruparse"],
+  };
+  if (composure >= 15) return {
+    composure, bloque: "medio", gatillo: "menos",
+    reason: `su salida tiene Serenidad/Decisiones ${f1(composure)}: no se equivocan bajo presión; saltar solo abre espacio. Bloque medio compacto y esperar el pase largo.`,
+    instructions: ["linea-presion-media", "presionar-menos"],
+    remove: ["linea-presion-alta", "presionar-mas", "presionar-mucho-mas"],
+  };
+  return {
+    composure, bloque: "medio o alto", gatillo: "más",
+    reason: `su salida tiene Serenidad/Decisiones ${f1(composure)}: presión frecuente sin exagerar; sube el bloque si su portero se atasca.`,
+    instructions: ["presionar-mas"],
+    remove: ["presionar-menos", "presionar-mucho-menos"],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Córners contra su defensa (PDF de balón parado)
+// ---------------------------------------------------------------------------
+
+export interface CornerPlan {
+  /** Sus defensores aéreos, del mejor al peor. */
+  defenders: { player: Player; aerial: number; height: number | null }[];
+  weakest: { player: Player; aerial: number; height: number | null } | null;
+  /** A qué palo insistir y por qué. */
+  post: "primer palo" | "segundo palo" | "centro";
+  reason: string;
+}
+
+export function rivalCornerPlan(rl: RivalLineup): CornerPlan {
+  const xi = starters(rl.lineup).map((s) => s.player).filter((p) => !p.isGoalkeeper);
+  const defenders = xi.map((p) => ({ player: p, aerial: (a(p, "Hea") + a(p, "Jum")) / 2, height: p.height })).sort((x, y) => y.aerial - x.aerial);
+  const tall = defenders.filter((d) => (d.height ?? 0) >= 188 || d.aerial >= 15);
+  const weakest = defenders.length ? defenders[defenders.length - 1] : null;
+  const gkAer = rl.lineup.slots.find((s) => s.starter?.player.isGoalkeeper)?.starter?.player.attrs.Aer?.value ?? null;
+  if (gkAer != null && gkAer <= 11) return { defenders, weakest, post: "primer palo", reason: `su portero no sale (Alcance aéreo ${gkAer}): córners cerrados al primer palo con el mejor rematador y un jugador alto estorbándole.` };
+  if (tall.length >= 3) return { defenders, weakest, post: "primer palo", reason: `${tall.length} defensores altos o buenos por arriba: insistir con balones altos al segundo palo es inútil. Arrastre: mejor rematador al primer palo, dos al segundo para llevarse marcadores.` };
+  if (tall.length <= 1) return { defenders, weakest, post: "segundo palo", reason: `solo ${tall.length} defensor de verdad por arriba: balón colgado al segundo palo con dos rematadores; el más flojo (${weakest?.player.name ?? "—"}, Cab/Sal ${weakest ? f1(weakest.aerial) : "–"}) no lo gana.` };
+  return { defenders, weakest, post: "centro", reason: "defensa aérea normal: rutina de arrastre (mejor rematador al primer palo, dos al segundo) y variar." };
+}
