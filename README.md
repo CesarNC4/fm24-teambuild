@@ -69,6 +69,7 @@ Si no quieres habilitar Corepack, antepón `corepack` a cada comando
 - `src/lib/fm/scoring.ts` – puntuación 0-100 por rol
 - `src/lib/store.ts` – estado persistente (zustand + IndexedDB)
 - `src/lib/fm/formations.ts`, `tactics.ts`, `instructions.ts` – formaciones, mejor XI (húngaro), avisos e instrucciones con encaje (nombres reales de FM24; los deslizadores son grupos con nivel -2…2)
+- `src/lib/fm/styleRoles.ts` – roles que admite cada estilo por hueco (varias opciones con el porqué, heredadas por familia), puntuados contra el titular y la plantilla
 - `src/lib/fm/stylePresets.ts`, `styles.ts` – catálogo de estilos por familia con estilo padre, roles-firma, principios, palancas, rendimiento en el motor y requisitos de evolución; encaje y «qué te falta» contra el XI
 - `src/lib/fm/advice.ts` – consejos contextuales de instrucciones (anchura, líneas, presión, portero, centros, gatillo × físico, roles con presión cableada, defensa preventiva y cuña, matriz de DarkHorse)
 - `src/lib/fm/playerInstructions.ts` – instrucciones individuales y sugerencias por titular

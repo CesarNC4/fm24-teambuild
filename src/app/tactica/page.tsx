@@ -9,6 +9,7 @@ import { rankStyles, UNIT_SHORT } from "@/lib/fm/styles";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
 import { buildLineup, newTactic, poolPlayers, rankFormations, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
 import { strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
+import { recommendRoles, recommendedRoleIds } from "@/lib/fm/styleRoles";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
 
@@ -86,6 +87,12 @@ export default function TacticPage() {
     return pool.players.length ? rankFormations(pool.players, pool.exclude) : [];
   }, [tactic, players.length, allPlayers, filiales]);
   const currentStyle = tactic?.styleId ? STYLE_BY_ID[tactic.styleId] : null;
+  const roleRecs = useMemo(() => {
+    if (!tactic || !lineup) return [];
+    const pool = poolPlayers(tactic, allPlayers, filiales.map((q) => q.id));
+    const players = pool.exclude ? pool.players.filter((p) => !pool.exclude!.has(p.uid)) : pool.players;
+    return recommendRoles(tactic.styleId, lineup, players);
+  }, [tactic, lineup, allPlayers, filiales]);
   const currentFit = currentStyle ? styleRank.find((f) => f.style.id === currentStyle.id) ?? null : null;
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
   const piBySlot = useMemo(() => {
@@ -223,6 +230,7 @@ export default function TacticPage() {
           <div className="absolute left-1/2 top-0 w-[55%] h-[16%] -translate-x-1/2 border border-t-0 border-border/60" />
           {lineup?.slots.map((s) => {
             const roleOptions = rolesForPosition(s.slot.slot);
+            const recommended = recommendedRoleIds(tactic.styleId, s.slot.slot);
             const isSel = selectedSlot === s.slot.id;
             return (
               <div
@@ -246,7 +254,7 @@ export default function TacticPage() {
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setRole(s.slot.id, e.target.value)}
                 >
-                  {roleOptions.map((r) => <option key={r.id} value={r.id}>{r.es} ({DUTY_LABEL[r.duty]})</option>)}
+                  {roleOptions.map((r) => <option key={r.id} value={r.id}>{recommended.has(r.id) ? "★ " : ""}{r.es} ({DUTY_LABEL[r.duty]})</option>)}
                 </select>
               </div>
             );
@@ -419,6 +427,52 @@ export default function TacticPage() {
           )}
         </aside>
       </div>
+
+      {/* Roles que pide el estilo */}
+      {currentStyle && lineup && roleRecs.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold">Roles para {currentStyle.name}</h2>
+            <span className="text-xs text-muted">{roleRecs.filter((r) => !r.currentOk).length === 0 ? "todos los huecos usan un rol del estilo" : `${roleRecs.filter((r) => !r.currentOk).length} hueco(s) con un rol fuera de las opciones del estilo`}</span>
+            {roleRecs.some((r) => !r.currentOk && r.options.length) && (
+              <button className="text-xs px-2 py-0.5 rounded border border-border hover:bg-surface-2" onClick={() => {
+                const roles = { ...tactic.roles };
+                for (const r of roleRecs) if (!r.currentOk && r.options.length) roles[r.slotId] = (r.options.slice().sort((a, b) => (b.starter ?? 0) - (a.starter ?? 0))[0]).role.id;
+                updateTactic(tactic.id, { roles });
+              }}>Poner en cada hueco la opción que mejor le va al titular</button>
+            )}
+          </div>
+          <p className="text-xs text-muted">No es un rol fijo: cada estilo admite varias opciones por hueco. Junto a cada una, la puntuación del titular actual en ese rol y el mejor jugador de la plantilla para él. ★ en los desplegables del campo = opción del estilo. Clic en una opción para ponerla.</p>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
+            {roleRecs.map((r) => (
+              <div key={r.slotId} className={`bg-surface border rounded-lg p-2.5 text-xs ${r.currentOk ? "border-border" : "border-attr-mid/60"}`}>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="text-muted">{POSITION_LABEL[r.slot]}</span>
+                  <span className="font-medium truncate">{lineup.slots.find((s) => s.slot.id === r.slotId)?.starter?.player.name ?? "—"}</span>
+                  <span className={`ml-auto whitespace-nowrap ${r.currentOk ? "text-attr-good" : "text-attr-mid"}`}>{r.currentOk ? "✓" : "⚠"} {r.current.es} ({DUTY_LABEL[r.current.duty]})</span>
+                </div>
+                {r.note && <div className="text-muted mb-1">{r.note}</div>}
+                <ul className="space-y-0.5">
+                  {r.options.map((op) => {
+                    const active = op.role.id === r.current.id;
+                    return (
+                      <li key={op.role.id} className={`flex items-start gap-1.5 ${active ? "font-medium" : ""}`}>
+                        <button className={`text-left hover:underline whitespace-nowrap ${active ? "text-accent" : ""}`} onClick={() => setRole(r.slotId, op.role.id)} title={op.why}>{active ? "● " : "○ "}{op.role.es} ({DUTY_LABEL[op.role.duty]})</button>
+                        <span className="text-muted min-w-0 whitespace-normal">— {op.why}</span>
+                        <span className="ml-auto whitespace-nowrap text-muted">
+                          {op.starter != null && <ScoreBadge score={op.starter} />}
+                          {op.best && op.best.player.uid !== lineup.slots.find((s) => s.slot.id === r.slotId)?.starter?.player.uid && op.best.score > (op.starter ?? 0) + 3 && <span title={`mejor para este rol: ${op.best.player.name}`}> · {op.best.player.name.split(" ").slice(-1)[0]} <ScoreBadge score={op.best.score} /></span>}
+                        </span>
+                      </li>
+                    );
+                  })}
+                  {r.options.length === 0 && <li className="text-muted">El estilo no dice nada de este hueco.</li>}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Instrucciones */}
       <section className="space-y-2">

@@ -36,3 +36,19 @@ for (const id of ["juego-posicion", "contra-directo", "presion-hombre"]) {
   const starters = lu.slots.filter((s) => s.starter).map((s) => ({ player: s.starter!.player, slot: s.slot.slot }));
   for (const s of lu.slots.slice(0, 11)) if (s.starter) console.log("   PI", s.slot.slot, s.role.code, suggestPlayerInstructions(s.starter.player, { slot: s.slot.slot, role: s.role, styleId: id, traitIds: [], teamRoles: lu.slots.map((x) => x.role), strikerAerial: strikerAerial(starters) }).map((x) => `${x.pi.es}(${x.strength})`).join(", "));
 }
+
+// ---- Roles recomendados por estilo
+import { ROLE_BY_ID as RBI, ROLES } from "../src/lib/fm/roles";
+import { recommendRoles, roleOptionsFor } from "../src/lib/fm/styleRoles";
+for (const s of STYLE_PRESETS) {
+  for (const grp of roleOptionsFor(s)) for (const op of grp.options) {
+    const ok = RBI[op.role] ? grp.slots.every((sl) => RBI[op.role].positions.includes(sl)) : ROLES.some((r) => r.code === op.role);
+    if (!ok) console.log("ROL INVÁLIDO", s.id, grp.slots.join("/"), op.role);
+  }
+}
+{
+  const tt = newTactic("4-3-3-dm", "jp"); tt.styleId = "juego-posicion";
+  const lu = buildLineup(tt, players);
+  console.log("\n== roles para juego-posicion (4-3-3 MCD)");
+  for (const r of recommendRoles("juego-posicion", lu, players)) console.log(" ", r.slot.padEnd(4), (r.currentOk ? "✓ " : "⚠ ") + r.current.id.padEnd(7), r.options.map((o) => `${o.role.id} ${o.starter?.toFixed(0) ?? "-"}${o.best ? `/${o.best.player.name.split(" ").slice(-1)[0]} ${o.best.score.toFixed(0)}` : ""}`).join(" | "));
+}
