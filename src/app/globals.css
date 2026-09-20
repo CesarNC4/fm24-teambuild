@@ -93,3 +93,14 @@ html, body {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* Desplegables nativos: el menú hereda el tema (en oscuro salía blanco con texto claro) */
+select {
+  color: var(--foreground);
+  background-color: var(--surface);
+}
+select option,
+select optgroup {
+  color: var(--foreground);
+  background-color: var(--surface);
+}
