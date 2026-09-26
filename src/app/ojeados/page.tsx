@@ -9,6 +9,7 @@ import { NEED_LABEL, SCOUTING_TIPS, VERDICT_LABEL, evaluateAll, fmtMoney, overpa
 import { estimateGameYear } from "@/lib/fm/youth";
 import { buildLeagueStats, leagueLevelPercentile } from "@/lib/fm/league";
 import { useAppStore, type TargetEntry } from "@/lib/store";
+import { useLeague } from "@/lib/useLeague";
 import { ScoreBadge } from "@/components/AttrCell";
 
 const NEED_CLASS: Record<NeedLevel, string> = {
@@ -41,7 +42,8 @@ export default function ScoutingPage() {
 
   const firstTeam = useMemo(() => players.plantilla ?? [], [players.plantilla]);
   const scouted = useMemo(() => players.ojeados ?? [], [players.ojeados]);
-  const league = useMemo(() => ((players.liga?.length ?? 0) >= 50 ? buildLeagueStats(players.liga) : null), [players.liga]);
+  const leaguePool = useLeague();
+  const league = useMemo(() => (leaguePool.players.length >= 50 ? buildLeagueStats(leaguePool.players) : null), [leaguePool.players]);
   const scoutedByUid = useMemo(() => new Map(scouted.map((p) => [p.uid, p])), [scouted]);
   const targetList = useMemo(() => Object.entries(targets).map(([uid, t]) => ({ uid, t, current: scoutedByUid.get(uid) ?? null })).sort((a, b) => a.t.addedAt.localeCompare(b.t.addedAt)), [targets, scoutedByUid]);
   const tactic = tactics.find((t) => t.id === activeTacticId) ?? tactics[0] ?? null;

@@ -101,6 +101,8 @@ export interface Squad {
   maxAge: number | null;
   /** true si juega una liga competitiva de verdad (equipo B), no liga juvenil. */
   competitive: boolean;
+  /** Solo rivales: los de «liga» alimentan la liga calculada; los de «internacional», no. */
+  competition?: "liga" | "internacional";
 }
 
 export interface ImportResult {

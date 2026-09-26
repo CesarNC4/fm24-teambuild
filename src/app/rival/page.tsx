@@ -11,6 +11,7 @@ import {
 } from "@/lib/fm/rival";
 import { buildLineup, poolPlayers, type Tactic } from "@/lib/fm/tactics";
 import { useAppStore } from "@/lib/store";
+import { coverageText, useLeague } from "@/lib/useLeague";
 import { ScoreBadge } from "@/components/AttrCell";
 
 function edgeTone(e: number | null): string {
@@ -44,7 +45,8 @@ export default function RivalPage() {
     const pool = poolPlayers(tactic, allPlayers, squads.filter((q) => q.kind === "filial").map((q) => q.id));
     return pool.players.length ? buildLineup(tactic, pool.players, { exclude: pool.exclude }) : null;
   }, [tactic, allPlayers, squads]);
-  const league = useMemo(() => ((allPlayers.liga ?? []).length >= 50 ? buildLeagueStats(allPlayers.liga) : null), [allPlayers.liga]);
+  const leaguePool = useLeague();
+  const league = useMemo(() => (leaguePool.players.length >= 50 ? buildLeagueStats(leaguePool.players) : null), [leaguePool.players]);
 
   const rl = useMemo(() => (rivalPlayers.length >= 11 ? rivalLineup(rivalPlayers, formationId || null) : null), [rivalPlayers, formationId]);
   const threats = useMemo(() => (rl ? rivalThreats(rl) : []), [rl]);
@@ -136,7 +138,7 @@ export default function RivalPage() {
         </label>
         <span className="text-xs text-muted">
           XI rival {Math.round(rl.average)}{ourAvg != null ? ` · nuestro XI ${Math.round(ourAvg)}` : ""}
-          {league ? ` · liga importada` : ""}
+          {league ? ` · ${coverageText(leaguePool)}` : ""}
         </span>
       </div>
 

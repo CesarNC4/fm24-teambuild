@@ -10,6 +10,7 @@ import { rankStyles } from "@/lib/fm/styles";
 import { buildLineup } from "@/lib/fm/tactics";
 import { estimateGameYear } from "@/lib/fm/youth";
 import { useAppStore } from "@/lib/store";
+import { coverageText, useLeague } from "@/lib/useLeague";
 
 function tone(v: number | null): string {
   if (v == null) return "text-muted";
@@ -35,7 +36,8 @@ export default function RadiographyPage() {
   const clubName = useAppStore((s) => s.clubName);
 
   const firstTeam = useMemo(() => players.plantilla ?? [], [players.plantilla]);
-  const leaguePlayers = useMemo(() => players.liga ?? [], [players.liga]);
+  const leaguePool = useLeague();
+  const leaguePlayers = leaguePool.players;
   const tactic = tactics.find((t) => t.id === activeTacticId) ?? tactics[0] ?? null;
   const lineup = useMemo(() => (tactic && firstTeam.length ? buildLineup(tactic, firstTeam) : null), [tactic, firstTeam]);
   const league = useMemo(() => (leaguePlayers.length >= 50 ? buildLeagueStats(leaguePlayers) : null), [leaguePlayers]);
@@ -66,7 +68,7 @@ export default function RadiographyPage() {
         <h1 className="text-2xl font-semibold">Radiografía</h1>
         <span className="text-xs text-muted">
           XI de {tactic?.name ?? "—"}{gameYear ? ` · temporada ${gameYear - 1}/${String(gameYear).slice(2)}` : ""}
-          {league ? ` · liga importada (${league.count} jugadores)` : " · sin liga importada: compara contra ti mismo"}
+          {league ? ` · ${coverageText(leaguePool)}` : " · sin liga: compara contra ti mismo"}
         </span>
       </div>
 
@@ -168,7 +170,7 @@ export default function RadiographyPage() {
           <h2 className="font-semibold text-sm">Frente a la liga</h2>
           {!leagueCmp && (
             <p className="text-xs text-muted">
-              Exporta una búsqueda de jugadores con todos los de tu liga (mínimo 50) e <Link href="/" className="underline">impórtala como «Liga»</Link>. Entonces verás en qué percentil de la liga está cada puesto, y en Ojeados el percentil de liga de cada candidato.
+              La liga se construye sola con tu plantilla y los rivales que importes marcados como «Liga»; hacen falta al menos 50 jugadores. Para completarla antes, exporta una búsqueda de tu liga e <Link href="/" className="underline">impórtala como «Liga (búsqueda)»</Link>. Entonces verás en qué percentil de la liga está cada puesto, y en Ojeados el percentil de liga de cada candidato.
             </p>
           )}
           {leagueCmp?.map((f) => (
@@ -193,7 +195,7 @@ export default function RadiographyPage() {
               <button key={u} className={`text-xs px-2 py-0.5 rounded border ${clubUnit === u ? "bg-accent text-accent-fg border-accent" : "border-border hover:bg-surface-2"}`} onClick={() => setClubUnit(u)}>{CLUB_UNIT_LABEL[u]}</button>
             ))}
           </div>
-          {clubs.length < 6 && <p className="text-xs text-muted">Hacen falta al menos 6 clubes con 11 o más jugadores en la exportación de la liga. Ahora mismo: {clubs.length}. El juego solo exporta las filas que ha cargado; exporta la búsqueda por trozos (por club o por posición) y usa «añadir» en Importar.</p>}
+          {clubs.length < 6 && <p className="text-xs text-muted">Hacen falta al menos 6 clubes con 11 o más jugadores en la liga. Ahora mismo: {clubs.length}. Cada rival que importes como «Liga» suma su club; la búsqueda de liga completa el resto.</p>}
           {clubRows.length > 0 && (
             <div className="overflow-auto border border-border rounded-md">
               <table className="tbl w-full">

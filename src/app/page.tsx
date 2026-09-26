@@ -5,6 +5,7 @@ import { ATTRIBUTES, ATTR_BY_KEY } from "@/lib/fm/attributes";
 import { parseFmHtml } from "@/lib/fm/parser";
 import type { ImportResult, ImportSource } from "@/lib/fm/types";
 import { useAppStore } from "@/lib/store";
+import { coverageText, useLeague } from "@/lib/useLeague";
 
 const FIELD_OPTIONS: { value: string; label: string }[] = [
   ["name", "Nombre"], ["age", "Edad"], ["wage", "Sueldo"], ["value", "Valor de traspaso"],
@@ -42,12 +43,16 @@ export default function ImportPage() {
   const removeSquad = useAppStore((s) => s.removeSquad);
   const [newSquad, setNewSquad] = useState("");
   const [newRival, setNewRival] = useState("");
+  const [newRivalComp, setNewRivalComp] = useState<"liga" | "internacional">("liga");
+  const leagueSize = useAppStore((s) => s.leagueSize);
+  const setLeagueSize = useAppStore((s) => s.setLeagueSize);
+  const league = useLeague();
   const restoreBackup = useAppStore((s) => s.restoreBackup);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
 
   const exportBackup = () => {
     const s = useAppStore.getState();
-    const data = { version: 1, exportedAt: new Date().toISOString(), players: s.players, imports: s.imports, squads: s.squads, headerOverrides: s.headerOverrides, clubName: s.clubName, tactics: s.tactics, activeTacticId: s.activeTacticId, playerTraits: s.playerTraits, trainingWeek: s.trainingWeek, scoutingBudget: s.scoutingBudget, history: s.history, targets: s.targets };
+    const data = { version: 1, exportedAt: new Date().toISOString(), players: s.players, imports: s.imports, squads: s.squads, headerOverrides: s.headerOverrides, clubName: s.clubName, tactics: s.tactics, activeTacticId: s.activeTacticId, playerTraits: s.playerTraits, trainingWeek: s.trainingWeek, scoutingBudget: s.scoutingBudget, history: s.history, targets: s.targets, leagueSize: s.leagueSize };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -161,12 +166,16 @@ export default function ImportPage() {
                 e.preventDefault();
                 const name = newRival.trim();
                 if (!name) return;
-                const id = addSquad({ name, kind: "rival", maxAge: null, competitive: true });
+                const id = addSquad({ name, kind: "rival", maxAge: null, competitive: true, competition: newRivalComp });
                 setSource(id);
                 setNewRival("");
               }}
             >
               <input className="bg-surface border border-border rounded px-2 py-0.5 w-32" placeholder="Próximo rival…" value={newRival} onChange={(e) => setNewRival(e.target.value)} />
+              <select className="bg-surface border border-border rounded px-1 py-0.5" value={newRivalComp} onChange={(e) => setNewRivalComp(e.target.value as "liga" | "internacional")} title="Los rivales de liga se suman solos a la liga calculada">
+                <option value="liga">Liga</option>
+                <option value="internacional">Internacional</option>
+              </select>
               <button className="px-2 py-0.5 rounded border border-border hover:bg-surface-2" type="submit">+ rival</button>
             </form>
           </div>
@@ -185,6 +194,18 @@ export default function ImportPage() {
                   <div className="text-muted text-xs">
                     {m ? `${m.count} jugadores · ${m.fileName} · ${new Date(m.importedAt).toLocaleString("es")}` : "vacío"}
                   </div>
+                  {q.kind === "rival" && (
+                    <label className="text-xs text-muted flex items-center gap-1 mt-0.5">
+                      competición
+                      <select className="bg-surface border border-border rounded px-1" value={q.competition ?? "liga"} onChange={(e) => updateSquad(q.id, { competition: e.target.value as "liga" | "internacional" })}>
+                        <option value="liga">Liga (cuenta para la liga)</option>
+                        <option value="internacional">Internacional (no cuenta)</option>
+                      </select>
+                    </label>
+                  )}
+                  {q.kind === "liga" && (
+                    <div className="text-xs text-muted mt-0.5">Opcional: completa los clubes que aún no has importado como rival.</div>
+                  )}
                   {q.kind === "filial" && (
                     <div className="text-xs text-muted flex items-center gap-2 mt-0.5">
                       <label>
@@ -217,6 +238,28 @@ export default function ImportPage() {
               </div>
             );
           })}
+          <div className="border-t border-border pt-2 space-y-1 text-xs">
+            <div className="font-medium">Liga calculada</div>
+            <p className="text-muted">Tu primer equipo + los rivales marcados como Liga + la búsqueda de liga, sin duplicados: por jugador gana la importación más reciente, y quien ya no sale en la exportación nueva de su club deja de contar para él.</p>
+            <p>{league.players.length ? coverageText(league) : "Todavía vacía."}{league.dropped > 0 ? ` · ${league.dropped} bajas detectadas` : ""}</p>
+            <label className="flex items-center gap-1 text-muted">
+              clubes en tu liga
+              <input className="bg-surface border border-border rounded px-1 w-12" type="number" min={2} max={40} value={leagueSize} onChange={(e) => setLeagueSize(Math.max(2, Number(e.target.value) || 20))} />
+            </label>
+            {league.clubs.length > 0 && (
+              <details>
+                <summary className="cursor-pointer text-muted">clubes con datos ({league.clubs.length})</summary>
+                <ul className="mt-1 space-y-0.5">
+                  {league.clubs.map((c) => (
+                    <li key={c.club} className="flex justify-between gap-2">
+                      <span>{c.club}</span>
+                      <span className="text-muted">{c.players} · {c.from === "primer" ? "tu plantilla" : c.from === "rival" ? "rival" : "búsqueda"}{c.importedAt ? ` · ${new Date(c.importedAt).toLocaleDateString("es")}` : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
           <p className="text-xs text-muted">Todo se guarda solo en este navegador; nada se sube a ningún servidor.</p>
           <div className="border-t border-border pt-2 space-y-1">
             <div className="font-medium text-xs">Copia de seguridad</div>

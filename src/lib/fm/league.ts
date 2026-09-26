@@ -7,7 +7,7 @@
 
 import { ATTRIBUTES, type AttrKey } from "./attributes";
 import { bestRoles } from "./scoring";
-import type { Player, PositionSlot } from "./types";
+import type { Player, PositionSlot, Squad } from "./types";
 
 export type Family = "POR" | "DFC" | "LAT" | "MC" | "EXT" | "MP" | "DL";
 export const FAMILY_LABEL: Record<Family, string> = { POR: "Porteros", DFC: "Centrales", LAT: "Laterales", MC: "Mediocentros", EXT: "Extremos", MP: "Mediapuntas", DL: "Delanteros" };
@@ -144,6 +144,88 @@ export function clubComparison(league: Player[], ourClub: string | null, ourPlay
       leagueMean: means.length ? means.reduce((s, m) => s + m.value, 0) / means.length : null,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Liga calculada: primer equipo + rivales de liga + búsqueda de liga opcional
+// ---------------------------------------------------------------------------
+
+/** Lo mínimo que necesita buildLeaguePool del store (así se puede probar sin React). */
+export interface LeaguePoolInput {
+  squads: Squad[];
+  players: Record<string, Player[]>;
+  imports: Record<string, { importedAt: string } | null>;
+  clubName: string | null;
+}
+
+export interface LeagueClubCoverage {
+  club: string;
+  players: number;
+  /** De dónde salen sus datos: su propia exportación (primer equipo o rival) o solo la búsqueda de liga. */
+  from: "primer" | "rival" | "busqueda";
+  importedAt: string | null;
+}
+
+export interface LeaguePool {
+  players: Player[];
+  clubs: LeagueClubCoverage[];
+  /** Jugadores de la búsqueda de liga descartados porque la exportación más reciente de su club ya no los incluye. */
+  dropped: number;
+}
+
+function mainClub(players: Player[]): string | null {
+  const counts = new Map<string, number>();
+  for (const p of players) if (p.club) counts.set(p.club, (counts.get(p.club) ?? 0) + 1);
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [c, n] of counts) if (n > bestN) { best = c; bestN = n; }
+  return best;
+}
+
+/**
+ * Junta en una sola lista, sin duplicados, a los jugadores de la liga: tu
+ * primer equipo, los rivales marcados como «Liga» y la búsqueda manual de
+ * liga. Por UID gana la importación más reciente. Si la exportación de un club
+ * es más nueva que el dato de un jugador de ese club y ya no lo incluye, el
+ * jugador se ha ido y deja de contar para ese club.
+ */
+export function buildLeaguePool({ squads, players, imports, clubName }: LeaguePoolInput): LeaguePool {
+  interface Src { club: string | null; at: string; list: Player[]; from: "primer" | "rival" | "busqueda" }
+  const srcs: Src[] = [];
+  for (const q of squads) {
+    const list = players[q.id] ?? [];
+    const at = imports[q.id]?.importedAt;
+    if (!list.length || !at) continue;
+    if (q.kind === "primer") srcs.push({ club: clubName ?? mainClub(list), at, list, from: "primer" });
+    else if (q.kind === "rival" && q.competition !== "internacional") srcs.push({ club: mainClub(list) ?? q.name, at, list, from: "rival" });
+    else if (q.kind === "liga") srcs.push({ club: null, at, list, from: "busqueda" });
+  }
+  // De la más antigua a la más reciente: lo nuevo pisa a lo viejo.
+  srcs.sort((a, b) => a.at.localeCompare(b.at));
+  const byUid = new Map<string, { p: Player; at: string }>();
+  for (const s of srcs) {
+    for (const p of s.list) byUid.set(p.uid, { p: s.club && !p.club ? { ...p, club: s.club } : p, at: s.at });
+  }
+  // Bajas: jugador asignado a un club cuya exportación es posterior y ya no lo trae.
+  let dropped = 0;
+  for (const s of srcs) {
+    if (!s.club) continue;
+    const inSrc = new Set(s.list.map((p) => p.uid));
+    for (const [uid, e] of byUid) {
+      if (e.p.club === s.club && !inSrc.has(uid) && e.at < s.at) { byUid.delete(uid); dropped++; }
+    }
+  }
+  const pool = [...byUid.values()].map((e) => e.p);
+  const own = new Map<string, Src>();
+  for (const s of srcs) if (s.club && (!own.has(s.club) || own.get(s.club)!.at < s.at)) own.set(s.club, s);
+  const lastSearch = srcs.filter((s) => s.from === "busqueda").at(-1)?.at ?? null;
+  const counts = new Map<string, number>();
+  for (const p of pool) if (p.club) counts.set(p.club, (counts.get(p.club) ?? 0) + 1);
+  const clubs: LeagueClubCoverage[] = [...counts.entries()]
+    .filter(([club, n]) => n >= 11 || own.has(club))
+    .map(([club, n]) => ({ club, players: n, from: own.get(club)?.from ?? "busqueda", importedAt: own.get(club)?.at ?? lastSearch }))
+    .sort((a, b) => a.club.localeCompare(b.club));
+  return { players: pool, clubs, dropped };
 }
 
 /** Clubes con datos suficientes en la liga importada. */
