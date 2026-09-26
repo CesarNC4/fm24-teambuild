@@ -18,7 +18,8 @@
     "check:roles": "tsx scripts/check-roles.ts",
     "check:pools": "tsx scripts/check-pools.ts",
     "check:balance": "tsx scripts/check-balance.ts",
-    "check:specialists": "tsx scripts/check-specialists.ts"
+    "check:specialists": "tsx scripts/check-specialists.ts",
+    "check:plan": "tsx scripts/check-plan.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",

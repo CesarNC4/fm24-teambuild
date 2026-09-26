@@ -19,6 +19,7 @@ import { buildLineup, depthMap, familiarity, type LineupResult, type SlotResult,
 import { personalityTierLevel } from "./personalities";
 import type { AttrKey } from "./attributes";
 import type { Player, PositionSlot } from "./types";
+import { meetsProfile, profileText, tacticPlan, type SignProfile } from "./slotPlan";
 
 export type NeedLevel = "urgente" | "mejorable" | "sucesion" | "cubierto";
 export const NEED_LABEL: Record<NeedLevel, string> = { urgente: "Urgente", mejorable: "Mejorable", sucesion: "Sucesión", cubierto: "Cubierto" };
@@ -39,11 +40,14 @@ export interface SquadNeed {
   upgradeScore: number;
   /** Perfil de edad que pide el hueco. */
   ageBand: "inmediato" | "futuro" | "ambos";
+  /** Perfil del plan por hueco: lo que nadie de la plantilla puede hacer en ese hueco. */
+  profile?: SignProfile;
 }
 
 /** Necesidades del primer equipo por hueco de la táctica. */
-export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number | null): { lineup: LineupResult; needs: SquadNeed[] } {
+export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number | null, traits: Record<string, string[]> = {}): { lineup: LineupResult; needs: SquadNeed[] } {
   const lineup = buildLineup(tactic, firstTeam);
+  const signs = new Map(tacticPlan(tactic, lineup, firstTeam, traits).signs.map((x) => [x.slotId, x]));
   // Suplente real: quien juega ese hueco en el segundo XI (cada jugador cuenta una vez)
   const depth = depthMap(tactic, firstTeam);
   const needs: SquadNeed[] = lineup.slots.map((s, i) => {
@@ -78,11 +82,17 @@ export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number
       if (level === "cubierto") level = "sucesion";
       reasons.push(`Contrato del titular vence en ${exp}.`);
     }
+    const profile = signs.get(s.slot.id);
+    if (profile) {
+      if (level === "cubierto" || level === "sucesion") level = "mejorable";
+      reasons.push(`Plan por hueco: nadie de la plantilla puede ${profile.needs.map((x) => x.toLowerCase()).join(" y ")} (${profileText(profile)}).`);
+    }
     return {
       slotId: s.slot.id, slot: s.slot.slot, role: s.role, starter: s.starter, depth: s.depth, backup, level, reasons,
       targetScore: Math.max(st - 8, backup?.effective ?? 0),
       upgradeScore: st + 3,
       ageBand,
+      ...(profile ? { profile } : {}),
     };
   });
   return { lineup, needs };
@@ -144,6 +154,13 @@ export function evaluateCandidate(p: Player, needs: SquadNeed[], firstTeam: Play
     // Prioriza huecos con necesidad; a igual necesidad, mejor efectiva.
     const weight = (c: CandidateFit) => c.effective + (c.need.level === "urgente" ? 6 : c.need.level === "mejorable" ? 4 : c.need.level === "sucesion" ? 2 : 0);
     if (!fit || weight(cand) > weight(fit)) fit = cand;
+  }
+
+  // --- Perfil del plan por hueco
+  if (fit?.need.profile) {
+    const m = meetsProfile(p, fit.need.profile);
+    if (m.ok) pluses.push(`Cumple el perfil del plan (${profileText(fit.need.profile)}).`);
+    else warnings.push(`No cumple el perfil del plan: ${m.misses.join(", ")}.`);
   }
 
   // --- Personalidad y atributos fijos
@@ -266,6 +283,11 @@ export function suggestAssignments(needs: SquadNeed[], firstTeam: Player[], budg
         { label: "Situación", value: immediate ? "cualquiera; marca también «contrato termina en 12 meses» y «transferibles» para abaratar" : "contrato termina en 12 meses / transferibles / cedibles" },
       ];
       if (future) filters.push({ label: "Personalidad", value: "Determinación ≥ 12; descartar ambición baja y profesionalidad baja" });
+      if (n.profile) {
+        filters.push({ label: "Perfil del plan", value: `${n.profile.needs.join(", ")}: ${profileText(n.profile)}` });
+        const quality = [...n.profile.traitsHave.map((t) => `Tiene «${t.es}»`), ...n.profile.traitsAvoid.map((t) => `No tiene «${t.es}»`)];
+        if (quality.length) filters.push({ label: "Cualidad de jugador", value: quality.join(" · ") });
+      }
       return {
         need: n,
         priority: immediate ? "maxima" : "normal",

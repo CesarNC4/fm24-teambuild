@@ -8,9 +8,10 @@ import { tacticAdvice } from "@/lib/fm/advice";
 import { rankStyles, UNIT_SHORT } from "@/lib/fm/styles";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
 import { DEFAULT_CUP_YOUTH, POOL_LABEL, depthMap, lineupForPool, newTactic, poolPlayers, rankFormations, tacticLocks, withLocks, youthSquadIds, type DepthTone, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
-import { roleDefaultNames, roleTraitClashes, strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
+import { roleDefaultNames, strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
 import { bestGroupRoles, recommendRoleGroups, recommendRoles, recommendedRoleIds } from "@/lib/fm/styleRoles";
 import { SPECIALIST_BY_ID } from "@/lib/fm/specialists";
+import { CAPABILITY_LABEL, checkText, profileText, tacticPlan, type SlotNeed } from "@/lib/fm/slotPlan";
 import { AREA_LABEL, FUNCTION_HINT, FUNCTION_LABEL, FUNCTION_ORDER, tacticBalance, type BalanceIssue } from "@/lib/fm/balance";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -27,6 +28,10 @@ const DEPTH_CLASS: Record<DepthTone, string> = { good: "text-attr-good", ok: "te
 
 const ISSUE_ICON: Record<BalanceIssue["level"], string> = { warn: "⚠", info: "ℹ", tip: "→", ok: "✓" };
 const ISSUE_CLASS: Record<BalanceIssue["level"], string> = { warn: "text-attr-mid", info: "text-muted", tip: "text-attr-good", ok: "text-attr-good" };
+
+const NEED_ICON = (n: SlotNeed) => (n.done ? "✓" : n.can === "si" ? "○" : n.can === "cerca" ? "◐" : "✗");
+const NEED_CLASS = (n: SlotNeed) => (n.done ? "text-attr-good" : n.can === "si" ? "text-fg" : n.can === "cerca" ? "text-attr-mid" : "text-attr-low");
+const SOURCE_LABEL: Record<SlotNeed["source"], string> = { rol: "del rol", companeros: "lo piden los compañeros", estilo: "lo pide el estilo" };
 
 const MOTOR_CLASS = { alto: "text-attr-good", medio: "text-attr-mid", "medio-cond": "text-attr-mid", bajo: "text-attr-low" } as const;
 
@@ -100,6 +105,12 @@ export default function TacticPage() {
     const players = pool.exclude ? pool.players.filter((p) => !pool.exclude!.has(p.uid)) : pool.players;
     return recommendRoles(tactic.styleId, lineup, players);
   }, [tactic, lineup, allPlayers, squads]);
+  const plan = useMemo(() => {
+    if (!tactic || !lineup) return null;
+    const pool = poolPlayers(tactic, allPlayers, squads);
+    const squadPlayers = pool.exclude ? pool.players.filter((p) => !pool.exclude!.has(p.uid)) : pool.players;
+    return tacticPlan(tactic, lineup, squadPlayers, playerTraits);
+  }, [tactic, lineup, allPlayers, squads, playerTraits]);
   const roleGroupRecs = useMemo(() => (tactic && lineup && roleRecs.length ? recommendRoleGroups(tactic, lineup, roleRecs) : []), [tactic, lineup, roleRecs]);
   const currentFit = currentStyle ? styleRank.find((f) => f.style.id === currentStyle.id) ?? null : null;
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
@@ -706,43 +717,91 @@ export default function TacticPage() {
         )}
       </section>
 
-      {/* Instrucciones individuales */}
-      {lineup && (
+      {/* Plan por hueco */}
+      {lineup && plan && (
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold">Instrucciones individuales sugeridas</h2>
+          <h2 className="text-lg font-semibold">Plan por hueco</h2>
           <p className="text-xs text-muted">
-            Por titular, según rol, estilo, atributos, pie fuerte y rasgos registrados. Nunca propone una instrucción que el rol ya trae de serie ni una que el juego no deja poner. ●●● muy recomendable · ●●○ recomendable · ●○○ opcional.
-            <span className="text-attr-good"> ✓ rasgo</span> = ya lo hace por un rasgo (no hace falta darla); <span className="text-attr-low">✗ rasgo</span> = un rasgo suyo la contradice.
+            Para cada titular: qué pide el hueco (las funciones de su rol, lo que le piden los compañeros según el detector de equilibrio y lo que el estilo pide a su línea), si puede hacerlo (índices de especialista y atributos) y qué hacer si no, por orden: instrucción individual, rasgo que lo haría natural, foco de entrenamiento si le faltan 1-2 puntos, otro jugador de la plantilla, otro rol o fichar el perfil.
+            {" "}<span className="text-attr-good">✓</span> cumple · ○ puede, con la acción indicada · <span className="text-attr-mid">◐</span> cerca · <span className="text-attr-low">✗</span> no llega. Los rasgos salen de los que registras en <Link href="/rasgos" className="underline">Rasgos</Link>.
           </p>
+          {plan.wantedTraits.length > 0 && (
+            <div className="bg-surface border border-border rounded-lg p-2.5 text-xs">
+              <span className="font-medium">Rasgos que pide tu {lineup.formation.name}{currentStyle ? ` de ${currentStyle.name}` : ""}:</span>{" "}
+              {plan.wantedTraits.map((w, i) => (
+                <span key={w.slotId} className={w.has ? "text-attr-good" : "text-muted"} onMouseEnter={() => setHoverSlots([w.slotId])} onMouseLeave={() => setHoverSlots([])}>
+                  {i > 0 && " · "}{w.role.es} con «{w.trait.es}» {w.has ? "✓" : "✗"}
+                </span>
+              ))}
+              <span className="text-muted">. {plan.wantedTraits.filter((w) => !w.has).length === plan.wantedTraits.length ? "Ahora mismo ninguno lo tiene." : `${plan.wantedTraits.filter((w) => w.has).length} de ${plan.wantedTraits.length} ya lo tienen.`}</span>
+              {plan.signs.length > 0 && (
+                <div className="mt-1 text-attr-low">
+                  Perfiles para fichar ({plan.signs.length}): {plan.signs.map((sp) => `${POSITION_LABEL[sp.slot]} · ${sp.role.es} (${profileText(sp)})`).join("; ")}. Aparecen como necesidad en <Link href="/ojeados" className="underline">Ojeados</Link>.
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
-            {lineup.slots.map((s) => {
-              const sug = piBySlot.get(s.slot.id) ?? [];
+            {plan.plans.map((sp) => {
+              const s = lineup.slots.find((x) => x.slot.id === sp.slotId)!;
               const def = roleDefaultNames(s.role, s.slot.slot);
-              const clashes = s.starter ? roleTraitClashes(s.role, s.slot.slot, playerTraits[s.starter.player.uid] ?? []) : [];
+              const planPis = new Set(sp.needs.flatMap((n) => n.actions.filter((a) => a.kind === "pi").map((a) => a.piId)));
+              const sug = (piBySlot.get(s.slot.id) ?? []).filter((x) => !planPis.has(x.pi.id));
+              const open = sp.needs.filter((n) => !n.done);
+              const done = sp.needs.filter((n) => n.done);
               return (
-                <div key={s.slot.id} className="bg-surface border border-border rounded-lg p-2.5 text-xs">
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-muted">{POSITION_LABEL[s.slot.slot]}</span>
-                    <span className="font-medium">{s.starter?.player.name ?? "—"}</span>
-                    <span className="text-muted">{s.role.es} ({DUTY_LABEL[s.role.duty]})</span>
+                <div key={sp.slotId} className={`bg-surface border rounded-lg p-2.5 text-xs space-y-1 ${sp.sign ? "border-attr-low/60" : open.some((n) => n.can !== "si") ? "border-attr-mid/60" : "border-border"}`}
+                  onMouseEnter={() => setHoverSlots([sp.slotId])} onMouseLeave={() => setHoverSlots([])}>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-muted">{POSITION_LABEL[sp.slot]}</span>
+                    <span className="font-medium">{sp.player?.name ?? "—"}</span>
+                    <span className="text-muted truncate">{sp.role.es} ({DUTY_LABEL[sp.role.duty]})</span>
                   </div>
-                  <div className="text-muted mb-1" title={def.blocked.length ? `No se pueden poner: ${def.blocked.join(", ")}` : undefined}>
-                    De serie: {def.part.length ? def.part.join(", ") : "ninguna"}
-                  </div>
-                  {clashes.map((c) => (
-                    <div key={c.trait.id} className="text-attr-low">✗ Rasgo «{c.trait.es}» va contra «{c.pi.es}», que el rol trae de serie</div>
+                  <div className="text-muted" title={def.blocked.length ? `No se pueden poner: ${def.blocked.join(", ")}` : undefined}>De serie: {def.part.length ? def.part.join(", ") : "ninguna (rol libre)"}</div>
+                  {done.length > 0 && (
+                    <div className="text-attr-good">✓ Cumple: {done.map((n, i) => <span key={n.key} title={`${n.why}\n${n.checks.map(checkText).join(", ")}`}>{i > 0 && ", "}{n.label.toLowerCase()}</span>)}</div>
+                  )}
+                  {open.map((n) => (
+                    <div key={n.key}>
+                      <div className={NEED_CLASS(n)} title={n.why}>
+                        {NEED_ICON(n)} <b>{n.label}</b> <span className="text-muted">· {SOURCE_LABEL[n.source]} · {CAPABILITY_LABEL[n.can]} ({n.checks.map(checkText).join(", ")})</span>
+                      </div>
+                      {n.source !== "rol" && <div className="text-muted pl-3">{n.why}</div>}
+                      {n.actions.map((a, i) => (
+                        <div key={i} className={`pl-3 ${a.kind === "fichar" ? "text-attr-low" : a.kind === "entrenar" ? "text-attr-mid" : ""}`}>
+                          → {a.text}
+                          {a.kind === "rol" && a.roleId && <button className="ml-1 text-[10px] px-1 rounded border border-border hover:bg-surface-2" onClick={() => setRole(sp.slotId, a.roleId!)}>poner</button>}
+                        </div>
+                      ))}
+                    </div>
                   ))}
-                  {sug.length === 0 && <div className="text-muted">Sin sugerencias: las del rol bastan.</div>}
-                  <ul className="space-y-0.5">
-                    {sug.map((x) => (
-                      <li key={x.pi.id} className={x.coveredBy ? "opacity-60" : ""} title={`${x.pi.en}\n${x.why}`}>
-                        <span className="font-mono text-muted">{"●".repeat(x.strength)}{"○".repeat(3 - x.strength)}</span>{" "}
-                        <b>{x.pi.es}</b> <span className="text-muted">— {x.why}</span>
-                        {x.coveredBy && <span className="text-attr-good"> ✓ {x.coveredBy.es}</span>}
-                        {x.contradictedBy && <span className="text-attr-low"> ✗ {x.contradictedBy.es}</span>}
-                      </li>
-                    ))}
-                  </ul>
+                  {sp.traits.filter((t) => t.kind === "choca").map((t) => <div key={"c" + t.trait.id} className="text-attr-low">✗ Rasgo «{t.trait.es}»: {t.why}</div>)}
+                  {sp.traits.filter((t) => t.kind === "tiene").map((t) => <div key={"t" + t.trait.id} className="text-attr-good">✓ Rasgo «{t.trait.es}»: {t.why}</div>)}
+                  {sp.traits.some((t) => t.kind === "ensenar") && (
+                    <div className="text-muted">+ Rasgos que puede aprender: {sp.traits.filter((t) => t.kind === "ensenar").slice(0, 3).map((t) => `«${t.trait.es}»`).join(", ")} <span title="Recomendados para el rol en los documentos, sin atributos por debajo del mínimo ni choques con los que ya tiene.">ⓘ</span></div>
+                  )}
+                  {sug.length > 0 && (
+                    <div className="pt-1 border-t border-border">
+                      <div className="text-muted">Otras instrucciones individuales (rol, estilo, pie y atributos):</div>
+                      <ul className="space-y-0.5">
+                        {sug.map((x) => (
+                          <li key={x.pi.id} className={x.coveredBy ? "opacity-60" : ""} title={`${x.pi.en}\n${x.why}`}>
+                            <span className="font-mono text-muted">{"●".repeat(x.strength)}{"○".repeat(3 - x.strength)}</span>{" "}
+                            <b>{x.pi.es}</b> <span className="text-muted">— {x.why}</span>
+                            {x.coveredBy && <span className="text-attr-good"> ✓ {x.coveredBy.es}</span>}
+                            {x.contradictedBy && <span className="text-attr-low"> ✗ {x.contradictedBy.es}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {sp.sign && (
+                    <div className="text-attr-low pt-1 border-t border-border">
+                      Fichar: {sp.role.es} que pueda {sp.sign.needs.map((x) => x.toLowerCase()).join(" y ")} ({profileText(sp.sign)}).
+                      {sp.sign.traitsHave.length > 0 && <> Cualidad: tiene «{sp.sign.traitsHave.map((t) => t.es).join("», «")}»</>}
+                      {sp.sign.traitsAvoid.length > 0 && <>; no tiene «{sp.sign.traitsAvoid.map((t) => t.es).join("», «")}»</>}.
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -9,9 +9,9 @@ import { STYLE_PRESETS, type EvolutionReq, type StylePreset } from "./stylePrese
 import type { LineupResult } from "./tactics";
 import type { Player, PositionSlot } from "./types";
 
-type Unit = "def" | "mid" | "att";
+export type Unit = "def" | "mid" | "att";
 
-function unitOfSlot(slot: PositionSlot): Unit | null {
+export function unitOfSlot(slot: PositionSlot): Unit | null {
   if (slot === "GK") return null;
   if (slot.startsWith("D") && !slot.startsWith("DM")) return "def";
   if (slot.startsWith("WB")) return "def";

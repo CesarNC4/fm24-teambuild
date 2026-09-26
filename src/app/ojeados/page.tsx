@@ -10,6 +10,7 @@ import { estimateGameYear } from "@/lib/fm/youth";
 import { buildLeagueStats, leagueLevelPercentile } from "@/lib/fm/league";
 import { useAppStore, type TargetEntry } from "@/lib/store";
 import { useLeague } from "@/lib/useLeague";
+import { profileText } from "@/lib/fm/slotPlan";
 import { ScoreBadge } from "@/components/AttrCell";
 
 const NEED_CLASS: Record<NeedLevel, string> = {
@@ -34,6 +35,7 @@ export default function ScoutingPage() {
   const setBudget = useAppStore((s) => s.setScoutingBudget);
   const targets = useAppStore((s) => s.targets);
   const setTarget = useAppStore((s) => s.setTarget);
+  const playerTraits = useAppStore((s) => s.playerTraits);
   const [showTargets, setShowTargets] = useState(true);
   const [slotFilter, setSlotFilter] = useState<string>("todos");
   const [hideDiscarded, setHideDiscarded] = useState(true);
@@ -48,7 +50,7 @@ export default function ScoutingPage() {
   const targetList = useMemo(() => Object.entries(targets).map(([uid, t]) => ({ uid, t, current: scoutedByUid.get(uid) ?? null })).sort((a, b) => a.t.addedAt.localeCompare(b.t.addedAt)), [targets, scoutedByUid]);
   const tactic = tactics.find((t) => t.id === activeTacticId) ?? tactics[0] ?? null;
   const gameYear = useMemo(() => estimateGameYear(firstTeam), [firstTeam]);
-  const needsRes = useMemo(() => (tactic && firstTeam.length ? squadNeeds(tactic, firstTeam, gameYear) : null), [tactic, firstTeam, gameYear]);
+  const needsRes = useMemo(() => (tactic && firstTeam.length ? squadNeeds(tactic, firstTeam, gameYear, playerTraits) : null), [tactic, firstTeam, gameYear, playerTraits]);
   const evals = useMemo(() => (needsRes ? evaluateAll(scouted, needsRes.needs, firstTeam, budget, gameYear) : []), [needsRes, scouted, firstTeam, budget, gameYear]);
   const assignments = useMemo(() => (needsRes ? suggestAssignments(needsRes.needs, firstTeam, budget) : []), [needsRes, firstTeam, budget]);
   const [showAssignments, setShowAssignments] = useState(true);
@@ -96,11 +98,12 @@ export default function ScoutingPage() {
                   {n.starter ? `${n.starter.player.name} (${Math.round(n.starter.effective)}, ${n.starter.player.age})` : "sin titular"}
                   {n.backup ? ` · sup. real ${n.backup.player.name} (${Math.round(n.backup.effective)})` : " · sin suplente"}
                 </div>
+                {n.profile && <div className="text-attr-low mt-0.5">Plan: {n.profile.needs.join(", ").toLowerCase()} ({profileText(n.profile)})</div>}
                 <div className="text-muted">Busca ≥{Math.round(n.targetScore)} rotación · ≥{Math.round(n.upgradeScore)} mejora · {n.ageBand === "futuro" ? "joven" : n.ageBand === "inmediato" ? "inmediato" : "cualquier edad"}</div>
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted">Urgente: sin suplente a menos de 12 puntos. Mejorable: titular 6 puntos por debajo de la media del XI. Sucesión: titular de 30+ sin relevo ≤26 o con contrato que vence. Clic en un hueco para filtrar candidatos.</p>
+          <p className="text-xs text-muted">Urgente: sin suplente real en el segundo XI o con él en rojo en el mapa de profundidad. Mejorable: titular 6 puntos por debajo de la media del XI, o un perfil del plan por hueco que nadie de la plantilla cubre. Sucesión: titular de 30+ sin relevo ≤26 o con contrato que vence. Clic en un hueco para filtrar candidatos.</p>
         </section>
       )}
 
