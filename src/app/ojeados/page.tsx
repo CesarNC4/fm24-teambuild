@@ -94,7 +94,7 @@ export default function ScoutingPage() {
                 </div>
                 <div className="text-muted mt-0.5">
                   {n.starter ? `${n.starter.player.name} (${Math.round(n.starter.effective)}, ${n.starter.player.age})` : "sin titular"}
-                  {n.depth[0] ? ` · sup. ${n.depth[0].player.name} (${Math.round(n.depth[0].effective)})` : " · sin suplente"}
+                  {n.backup ? ` · sup. real ${n.backup.player.name} (${Math.round(n.backup.effective)})` : " · sin suplente"}
                 </div>
                 <div className="text-muted">Busca ≥{Math.round(n.targetScore)} rotación · ≥{Math.round(n.upgradeScore)} mejora · {n.ageBand === "futuro" ? "joven" : n.ageBand === "inmediato" ? "inmediato" : "cualquier edad"}</div>
               </button>

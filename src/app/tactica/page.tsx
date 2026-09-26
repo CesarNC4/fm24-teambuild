@@ -7,7 +7,7 @@ import { AXIS_GROUPS, CHOICE_GROUPS, FAMILY_LABEL, INSTRUCTIONS, INSTRUCTION_BY_
 import { tacticAdvice } from "@/lib/fm/advice";
 import { rankStyles, UNIT_SHORT } from "@/lib/fm/styles";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
-import { buildLineup, newTactic, poolPlayers, rankFormations, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
+import { DEFAULT_CUP_YOUTH, POOL_LABEL, depthMap, lineupForPool, newTactic, poolPlayers, rankFormations, tacticLocks, tacticWarnings, withLocks, youthSquadIds, type DepthTone, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
 import { roleDefaultNames, roleTraitClashes, strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
 import { recommendRoles, recommendedRoleIds } from "@/lib/fm/styleRoles";
 import { useAppStore } from "@/lib/store";
@@ -20,6 +20,8 @@ const TONE_CLASS = {
   poor: "text-attr-low",
   na: "text-muted",
 } as const;
+
+const DEPTH_CLASS: Record<DepthTone, string> = { good: "text-attr-good", ok: "text-attr-mid", poor: "text-attr-low" };
 
 const MOTOR_CLASS = { alto: "text-attr-good", medio: "text-attr-mid", "medio-cond": "text-attr-mid", bajo: "text-attr-low" } as const;
 
@@ -73,26 +75,25 @@ export default function TacticPage() {
 
   const tactic = tactics.find((t) => t.id === activeId) ?? tactics[0] ?? null;
 
-  const lineup: LineupResult | null = useMemo(() => {
-    if (!tactic || !players.length) return null;
-    const pool = poolPlayers(tactic, allPlayers, filiales.map((q) => q.id));
-    return pool.players.length ? buildLineup(tactic, pool.players, { exclude: pool.exclude }) : null;
-  }, [tactic, players.length, allPlayers, filiales]);
+  const poolLineup = useMemo(() => (tactic && players.length ? lineupForPool(tactic, allPlayers, squads) : null), [tactic, players.length, allPlayers, squads]);
+  const lineup: LineupResult | null = poolLineup?.lineup ?? null;
+  const depth = useMemo(() => (tactic && players.length ? depthMap(tactic, players) : []), [tactic, players]);
+  const hasYouth = useMemo(() => youthSquadIds(squads).length > 0, [squads]);
   const warnings = useMemo(() => (tactic ? tacticWarnings(tactic) : []), [tactic]);
   const advice = useMemo(() => (tactic && lineup ? tacticAdvice(tactic, lineup) : []), [tactic, lineup]);
   const styleRank = useMemo(() => (lineup ? rankStyles(lineup) : []), [lineup]);
   const formationRank = useMemo(() => {
     if (!tactic || !players.length) return [];
-    const pool = poolPlayers(tactic, allPlayers, filiales.map((q) => q.id));
+    const pool = poolPlayers(tactic, allPlayers, squads);
     return pool.players.length ? rankFormations(pool.players, pool.exclude) : [];
-  }, [tactic, players.length, allPlayers, filiales]);
+  }, [tactic, players.length, allPlayers, squads]);
   const currentStyle = tactic?.styleId ? STYLE_BY_ID[tactic.styleId] : null;
   const roleRecs = useMemo(() => {
     if (!tactic || !lineup) return [];
-    const pool = poolPlayers(tactic, allPlayers, filiales.map((q) => q.id));
+    const pool = poolPlayers(tactic, allPlayers, squads);
     const players = pool.exclude ? pool.players.filter((p) => !pool.exclude!.has(p.uid)) : pool.players;
     return recommendRoles(tactic.styleId, lineup, players);
-  }, [tactic, lineup, allPlayers, filiales]);
+  }, [tactic, lineup, allPlayers, squads]);
   const currentFit = currentStyle ? styleRank.find((f) => f.style.id === currentStyle.id) ?? null : null;
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
   const piBySlot = useMemo(() => {
@@ -126,13 +127,18 @@ export default function TacticPage() {
   const selected: SlotResult | null = lineup?.slots.find((s) => s.slot.id === selectedSlot) ?? null;
 
   const setRole = (slotId: string, roleId: string) => updateTactic(tactic.id, (t) => ({ ...t, roles: { ...t.roles, [slotId]: roleId } }));
+  const poolId = tactic.pool ?? "plantilla";
+  const locks = tacticLocks(tactic);
   const toggleLock = (slotId: string, uid: string | null) =>
     updateTactic(tactic.id, (t) => {
-      const locks = { ...t.locks };
-      if (uid === null || locks[slotId] === uid) delete locks[slotId];
-      else locks[slotId] = uid;
-      return { ...t, locks };
+      const next = { ...tacticLocks(t) };
+      if (uid === null || next[slotId] === uid) delete next[slotId];
+      else next[slotId] = uid;
+      return withLocks(t, t.pool ?? "plantilla", next);
     });
+  const gapBySlot = new Map((poolLineup?.gaps ?? []).map((g) => [g.slotId, g]));
+  const swapBySlot = new Map((poolLineup?.cup?.swaps ?? []).map((w) => [w.slotId, w]));
+  const showYouth = poolId === "copa";
   const changeFormation = (formationId: string) => {
     const fresh = newTactic(formationId, tactic.name);
     updateTactic(tactic.id, { formationId, roles: fresh.roles, locks: {} });
@@ -181,12 +187,28 @@ export default function TacticPage() {
           value={tactic.name}
           onChange={(e) => updateTactic(tactic.id, { name: e.target.value })}
         />
-        <select className="bg-surface border border-border rounded px-2 py-1" value={tactic.pool ?? "plantilla"} onChange={(e) => updateTactic(tactic.id, { pool: e.target.value })} title="Con qué jugadores se arma el XI">
-          <option value="plantilla">Primer equipo</option>
-          <option value="segundo">Segundo equipo (sin el XI titular)</option>
-          {filiales.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
-          {filiales.length > 0 && <option value="todos">Titulares + filiales (todos)</option>}
+        <select className="bg-surface border border-border rounded px-2 py-1" value={poolId} onChange={(e) => updateTactic(tactic.id, { pool: e.target.value })} title="Con qué jugadores se arma el XI. Cada plantilla tiene sus propios fijados.">
+          <option value="plantilla">{POOL_LABEL.plantilla}</option>
+          <option value="segundo">{POOL_LABEL.segundo} (sin los titulares)</option>
+          {hasYouth && <option value="juveniles">{POOL_LABEL.juveniles} (todos los filiales juveniles)</option>}
+          {hasYouth && <option value="copa">{POOL_LABEL.copa} (primer equipo + juveniles)</option>}
+          {filiales.length > 0 && (
+            <optgroup label="Un filial">
+              {filiales.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
+            </optgroup>
+          )}
         </select>
+        {poolId === "copa" && (
+          <label className="flex items-center gap-1 text-xs" title="Cuenta como juvenil quien está importado en un filial juvenil (con edad máxima), no por edad.">
+            Mínimo de juveniles
+            <input
+              type="number" min={0} max={11}
+              className="w-12 bg-surface border border-border rounded px-1 py-0.5"
+              value={tactic.cupYouthMin ?? DEFAULT_CUP_YOUTH}
+              onChange={(e) => updateTactic(tactic.id, { cupYouthMin: Math.max(0, Math.min(11, Number(e.target.value) || 0)) })}
+            />
+          </label>
+        )}
         <select className="bg-surface border border-border rounded px-2 py-1" value={tactic.formationId} onChange={(e) => changeFormation(e.target.value)}>
           {FORMATIONS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
@@ -219,6 +241,17 @@ export default function TacticPage() {
         )}
       </div>
 
+      {poolLineup?.cup && (
+        <p className={`text-xs ${poolLineup.cup.count < poolLineup.cup.min ? "text-attr-low" : "text-muted"}`}>
+          🎓 Juveniles en el XI: {poolLineup.cup.count} de {poolLineup.cup.min} como mínimo.
+          {poolLineup.cup.swaps.length > 0 && ` Entran ${poolLineup.cup.swaps.length} por el mínimo; el XI pierde ${poolLineup.cup.cost.toFixed(1)} puntos de media: ${poolLineup.cup.swaps.map((w) => `${w.player.name} por ${w.replaced?.name ?? "—"} (−${w.cost.toFixed(0)})`).join(", ")}.`}
+          {poolLineup.cup.count < poolLineup.cup.min && " No hay juveniles suficientes importados: importa los filiales juveniles."}
+        </p>
+      )}
+      {poolLineup && poolLineup.gaps.length > 0 && (
+        <p className="text-xs text-attr-low">Falta de profundidad en el segundo equipo: {poolLineup.gaps.length} {poolLineup.gaps.length === 1 ? "hueco" : "huecos"} en rojo en el campo.</p>
+      )}
+
       <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-4">
         {/* Campo */}
         <div className="relative w-full aspect-[3/4] max-h-[720px] rounded-lg border border-border overflow-hidden"
@@ -232,20 +265,25 @@ export default function TacticPage() {
             const roleOptions = rolesForPosition(s.slot.slot);
             const recommended = recommendedRoleIds(tactic.styleId, s.slot.slot);
             const isSel = selectedSlot === s.slot.id;
+            const gap = gapBySlot.get(s.slot.id);
+            const swap = swapBySlot.get(s.slot.id);
+            const isYouth = showYouth && !!s.starter && !!poolLineup?.youth.has(s.starter.player.uid);
             return (
               <div
                 key={s.slot.id}
-                className={`absolute -translate-x-1/2 -translate-y-1/2 w-[120px] rounded-md border bg-surface/95 shadow-sm text-[11px] cursor-pointer ${isSel ? "border-accent ring-2 ring-accent/40" : "border-border"}`}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 w-[120px] rounded-md border bg-surface/95 shadow-sm text-[11px] cursor-pointer ${isSel ? "border-accent ring-2 ring-accent/40" : gap ? "border-attr-low ring-2 ring-attr-low/40" : "border-border"}`}
                 style={{ left: `${s.slot.x}%`, top: `${100 - s.slot.y}%` }}
                 onClick={() => setSelectedSlot(s.slot.id)}
+                title={gap?.text ?? (swap ? `Juvenil por el mínimo: entra por ${swap.replaced?.name ?? "—"}, cuesta ${swap.cost.toFixed(1)} puntos` : undefined)}
               >
                 <div className="flex items-center justify-between px-1.5 pt-1">
                   <span className="text-muted">{POSITION_LABEL[s.slot.slot]}</span>
                   {s.starter && <ScoreBadge score={s.starter.effective} />}
                 </div>
                 <div className="px-1.5 font-medium truncate" title={s.starter?.player.name}>
-                  {s.locked && <span title="Fijado">📌 </span>}
-                  {s.starter?.player.name ?? "—"}
+                  {s.starter && locks[s.slot.id] === s.starter.player.uid && <span title="Fijado">📌 </span>}
+                  {isYouth && <span title={swap ? `Juvenil por el mínimo (−${swap.cost.toFixed(0)})` : "Juvenil"}>🎓 </span>}
+                  {s.starter?.player.name ?? (gap?.repeat ? <span className="text-attr-low">falta · {gap.repeat.name}</span> : "—")}
                   {s.starter && s.starter.familiarity < 1 && <span className="text-attr-mid" title="No domina la posición"> *</span>}
                 </div>
                 <select
@@ -265,7 +303,27 @@ export default function TacticPage() {
         <aside className="space-y-3 text-sm">
           <section className="bg-surface border border-border rounded-lg p-3 space-y-2">
             <h2 className="font-semibold">{selected ? `${POSITION_LABEL[selected.slot.slot]} · ${selected.role.es} (${DUTY_LABEL[selected.role.duty]})` : "Profundidad"}</h2>
-            {!selected && <p className="text-xs text-muted">Haz clic en un hueco del campo para ver candidatos y fijar un jugador.</p>}
+            {!selected && (
+              <>
+                <p className="text-xs text-muted">Haz clic en un hueco del campo para ver candidatos y fijar un jugador. Los fijados son de la plantilla elegida ({POOL_LABEL[poolId] ?? filiales.find((q) => q.id === poolId)?.name}).</p>
+                {depth.length > 0 && (
+                  <table className="tbl w-full text-xs" title="Titular del primer XI y suplente real: quien juega ese hueco en el segundo XI (cada jugador cuenta una vez).">
+                    <thead><tr><th>Hueco</th><th>Titular</th><th>Suplente real</th><th className="num">Dif.</th></tr></thead>
+                    <tbody>
+                      {depth.map((d) => (
+                        <tr key={d.slot.slot.id}>
+                          <td className="text-muted">{POSITION_LABEL[d.slot.slot.slot]}</td>
+                          <td className="truncate max-w-[110px]">{d.slot.starter?.player.name ?? "—"}</td>
+                          <td className={`truncate max-w-[110px] ${DEPTH_CLASS[d.tone]}`}>{d.backup ? `${d.backup.player.name}${d.backup.familiarity < 0.85 ? " *" : ""}` : "nadie"}</td>
+                          <td className={`num ${DEPTH_CLASS[d.tone]}`}>{d.gap == null ? "—" : `−${Math.max(0, d.gap).toFixed(0)}`}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {depth.length > 0 && <p className="text-[11px] text-muted">Verde: a 8 puntos o menos. Ámbar: hasta 15. Rojo: más lejos, sin suplente o con el suplente fuera de su puesto (*).</p>}
+              </>
+            )}
             {selected && (
               <table className="tbl w-full">
                 <thead><tr><th>Jugador</th><th className="num">Rol</th><th className="num">Pos.</th><th className="num">Efect.</th><th></th></tr></thead>
@@ -278,7 +336,7 @@ export default function TacticPage() {
                       <td className="num"><ScoreBadge score={c!.effective} /></td>
                       <td>
                         <button className="text-[10px] px-1 rounded border border-border hover:bg-surface-2" onClick={() => toggleLock(selected.slot.id, c!.player.uid)}>
-                          {tactic.locks[selected.slot.id] === c!.player.uid ? "soltar" : "fijar"}
+                          {locks[selected.slot.id] === c!.player.uid ? "soltar" : "fijar"}
                         </button>
                       </td>
                     </tr>

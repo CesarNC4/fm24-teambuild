@@ -6,7 +6,7 @@
 import { FORMATIONS, FORMATION_BY_ID, type Formation, type FormationSlot } from "./formations";
 import { ROLE_BY_ID, type RoleDef } from "./roles";
 import { DEFAULT_SCORING, scoreRole, type RoleScore, type ScoringConfig } from "./scoring";
-import type { Player, PositionSlot } from "./types";
+import type { Player, PositionSlot, Squad } from "./types";
 import { styleTraits } from "./instructions";
 
 // ---------------------------------------------------------------------------
@@ -19,8 +19,8 @@ export interface Tactic {
   formationId: string;
   /** slotId → roleId */
   roles: Record<string, string>;
-  /** slotId → uid del jugador fijado a mano (opcional). */
-  locks: Record<string, string>;
+  /** Fijados a mano por plantilla: pool → (slotId → uid). Fijar en el primer equipo no fija en el segundo. */
+  locks: Record<string, Record<string, string>>;
   /** Estilo de juego elegido (id de STYLE_PRESETS) o null. */
   styleId: string | null;
   /** Mentalidad del equipo (id de MENTALITIES). Ausente en tácticas antiguas = equilibrada. */
@@ -28,11 +28,33 @@ export interface Tactic {
   /** Instrucciones activadas por el usuario (ids). */
   instructions: string[];
   /**
-   * Jugadores con los que se arma el XI: "plantilla" (primer equipo, por
-   * defecto), "segundo" (primer equipo sin el XI titular), "todos" (primer
-   * equipo + filiales) o el id de un filial.
+   * Plantilla con la que se arma el XI: "plantilla" (primer equipo, por
+   * defecto), "segundo" (primer equipo sin el XI titular), "juveniles" (todos
+   * los filiales juveniles juntos), "copa" (primer equipo + juveniles con un
+   * mínimo de juveniles en el campo) o el id de un filial.
    */
   pool?: string;
+  /** Equipo de copa: mínimo de juveniles en el XI (5 por defecto). */
+  cupYouthMin?: number;
+}
+
+export const POOL_LABEL: Record<string, string> = {
+  plantilla: "Primer equipo",
+  segundo: "Segundo equipo",
+  juveniles: "Juveniles",
+  copa: "Equipo de copa",
+};
+
+export const DEFAULT_CUP_YOUTH = 5;
+
+/** Fijados de la táctica en una plantilla (por defecto, la elegida). */
+export function tacticLocks(t: Tactic, pool: string = t.pool ?? "plantilla"): Record<string, string> {
+  return t.locks?.[pool] ?? {};
+}
+
+/** Copia de la táctica con los fijados de una plantilla cambiados. */
+export function withLocks(t: Tactic, pool: string, locks: Record<string, string>): Tactic {
+  return { ...t, locks: { ...t.locks, [pool]: locks } };
 }
 
 /**
@@ -55,17 +77,150 @@ export function migrateTacticRoles(t: Tactic): Tactic {
   return changed ? { ...t, roles } : t;
 }
 
+/**
+ * Tácticas guardadas antes de los fijados por plantilla: los fijados pasan al
+ * primer equipo y «Titulares + filiales» pasa a Equipo de copa.
+ */
+export function migrateTactic(t: Tactic): Tactic {
+  const raw = (t.locks ?? {}) as Record<string, unknown>;
+  const flat = Object.values(raw).some((v) => typeof v === "string");
+  const locks = flat ? { plantilla: raw as Record<string, string> } : (raw as Tactic["locks"]);
+  const pool = t.pool === "todos" ? "copa" : t.pool;
+  return migrateTacticRoles({ ...t, locks, ...(pool ? { pool } : {}) });
+}
+
+/** Filiales juveniles: los que tienen edad máxima (Sub-18, Sub-21…). El equipo B no cuenta. */
+export function youthSquadIds(squads: Squad[]): string[] {
+  return squads.filter((q) => q.kind === "filial" && q.maxAge != null).map((q) => q.id);
+}
+
+function uniqueByUid(list: Player[]): Player[] {
+  const seen = new Set<string>();
+  return list.filter((p) => (seen.has(p.uid) ? false : (seen.add(p.uid), true)));
+}
+
+export interface PoolPlayers {
+  players: Player[];
+  exclude?: Set<string>;
+  /** Jugadores importados en un filial juvenil (cuentan como juveniles en la copa). */
+  youth: Set<string>;
+}
+
 /** Jugadores disponibles para una táctica según su `pool`. */
-export function poolPlayers(tactic: Tactic, players: Record<string, Player[]>, filialIds: string[]): { players: Player[]; exclude?: Set<string> } {
+export function poolPlayers(tactic: Tactic, players: Record<string, Player[]>, squads: Squad[]): PoolPlayers {
   const first = players.plantilla ?? [];
   const pool = tactic.pool ?? "plantilla";
+  const youthPlayers = uniqueByUid(youthSquadIds(squads).flatMap((id) => players[id] ?? []));
+  const youth = new Set(youthPlayers.map((p) => p.uid));
   if (pool === "segundo") {
-    const xi = buildLineup({ ...tactic, pool: "plantilla", locks: {} }, first);
-    return { players: first, exclude: new Set(xi.slots.filter((s) => s.starter).map((s) => s.starter!.player.uid)) };
+    const xi = buildLineup(tactic, first, { locks: tacticLocks(tactic, "plantilla") });
+    return { players: first, exclude: new Set(xi.slots.filter((s) => s.starter).map((s) => s.starter!.player.uid)), youth };
   }
-  if (pool === "todos") return { players: [...first, ...filialIds.flatMap((id) => players[id] ?? [])] };
-  if (pool !== "plantilla" && players[pool]) return { players: players[pool] };
-  return { players: first };
+  if (pool === "juveniles") return { players: youthPlayers, youth };
+  if (pool === "copa") return { players: uniqueByUid([...youthPlayers, ...first]), youth };
+  if (pool !== "plantilla" && players[pool]) return { players: players[pool], youth };
+  return { players: first, youth };
+}
+
+export interface CupSwap {
+  slotId: string;
+  player: Player;
+  /** Titular del mejor XI al que sustituye. */
+  replaced: Player | null;
+  /** Puntos que se pierden en el hueco. */
+  cost: number;
+}
+
+export interface PoolLineup extends PoolPlayers {
+  lineup: LineupResult | null;
+  /** Segundo equipo: huecos sin nadie de su puesto y el titular que tendría que repetir. */
+  gaps: { slotId: string; repeat: Player | null; text: string }[];
+  /** Equipo de copa: juveniles en el XI y los que entran por el mínimo. */
+  cup?: { min: number; count: number; swaps: CupSwap[]; cost: number };
+}
+
+/** XI de la plantilla elegida con sus fijados y las reglas de cada plantilla. */
+export function lineupForPool(tactic: Tactic, players: Record<string, Player[]>, squads: Squad[]): PoolLineup {
+  const pp = poolPlayers(tactic, players, squads);
+  const pool = tactic.pool ?? "plantilla";
+  const out: PoolLineup = { ...pp, lineup: null, gaps: [] };
+  if (!pp.players.length) return out;
+  const locks = tacticLocks(tactic);
+  let lineup = buildLineup(tactic, pp.players, { exclude: pp.exclude, locks });
+
+  if (pool === "segundo") {
+    const first = buildLineup(tactic, players.plantilla ?? [], { locks: tacticLocks(tactic, "plantilla") });
+    lineup.slots.forEach((s, i) => {
+      const repeat = first.slots[i]?.starter?.player ?? null;
+      if (!s.starter) out.gaps.push({ slotId: s.slot.id, repeat, text: repeat ? `Nadie más para el puesto: tendría que repetir ${repeat.name}.` : "Nadie para el puesto." });
+      else if (s.starter.familiarity < 0.85) out.gaps.push({ slotId: s.slot.id, repeat, text: `Lo cubre ${s.starter.player.name} fuera de su puesto; el que lo domina es ${repeat?.name ?? "el titular"}.` });
+    });
+  }
+
+  if (pool === "copa") {
+    const min = tactic.cupYouthMin ?? DEFAULT_CUP_YOUTH;
+    const isYouth = (p: Player | undefined) => !!p && pp.youth.has(p.uid);
+    const inXi = new Set(lineup.slots.map((s) => s.starter?.player.uid).filter(Boolean) as string[]);
+    let count = lineup.slots.filter((s) => isYouth(s.starter?.player)).length;
+    const swaps: CupSwap[] = [];
+    const taken = new Set<string>();
+    while (count < min) {
+      let best: CupSwap | null = null;
+      for (const s of lineup.slots) {
+        if (s.locked || taken.has(s.slot.id) || !s.starter || isYouth(s.starter.player)) continue;
+        for (const p of pp.players) {
+          if (!pp.youth.has(p.uid) || inXi.has(p.uid) || p.isGoalkeeper !== (s.slot.slot === "GK")) continue;
+          const eff = scoreRole(p, s.role).score * familiarity(p, s.slot.slot);
+          const cost = s.starter.effective - eff;
+          if (!best || cost < best.cost) best = { slotId: s.slot.id, player: p, replaced: s.starter.player, cost };
+        }
+      }
+      if (!best) break;
+      swaps.push(best);
+      taken.add(best.slotId);
+      inXi.add(best.player.uid);
+      count++;
+    }
+    if (swaps.length) {
+      // Los juveniles que ya eran titulares se quedan donde estaban: así el nuevo XI no los desplaza
+      const keep = Object.fromEntries(lineup.slots.filter((s) => isYouth(s.starter?.player)).map((s) => [s.slot.id, s.starter!.player.uid]));
+      const before = lineup.average;
+      lineup = buildLineup(tactic, pp.players, { locks: { ...locks, ...keep, ...Object.fromEntries(swaps.map((w) => [w.slotId, w.player.uid])) } });
+      count = lineup.slots.filter((s) => isYouth(s.starter?.player)).length;
+      out.cup = { min, count, swaps, cost: before - lineup.average };
+    } else out.cup = { min, count, swaps, cost: 0 };
+  }
+
+  out.lineup = lineup;
+  return out;
+}
+
+export type DepthTone = "good" | "ok" | "poor";
+
+export interface DepthEntry {
+  slot: SlotResult;
+  /** Suplente real: quien juega ese hueco en el segundo XI (cada jugador cuenta una vez). */
+  backup: SlotCandidate | null;
+  /** Puntos del titular al suplente. */
+  gap: number | null;
+  tone: DepthTone;
+}
+
+/**
+ * Mapa de profundidad del primer equipo: titular del primer XI y suplente real
+ * del segundo XI en cada hueco. Verde a 8 puntos o menos, ámbar hasta 15, rojo
+ * más lejos, sin suplente o con el suplente fuera de su puesto.
+ */
+export function depthMap(tactic: Tactic, firstTeam: Player[]): DepthEntry[] {
+  const first = buildLineup(tactic, firstTeam, { locks: tacticLocks(tactic, "plantilla") });
+  const exclude = new Set(first.slots.map((s) => s.starter?.player.uid).filter(Boolean) as string[]);
+  const second = buildLineup(tactic, firstTeam, { exclude, locks: tacticLocks(tactic, "segundo") });
+  return first.slots.map((s, i) => {
+    const backup = second.slots[i]?.starter ?? null;
+    const gap = s.starter && backup ? s.starter.effective - backup.effective : null;
+    const tone: DepthTone = !backup || backup.familiarity < 0.85 || gap == null || gap > 15 ? "poor" : gap > 8 ? "ok" : "good";
+    return { slot: s, backup, gap, tone };
+  });
 }
 
 export function newTactic(formationId: string, name = "Nueva táctica"): Tactic {
@@ -202,11 +357,16 @@ function candidatesFor(players: Player[], slot: FormationSlot, role: RoleDef, cf
     .sort((a, b) => b.effective - a.effective);
 }
 
+/**
+ * Mejor XI. Sin `locks` usa los fijados del primer equipo: es lo que quieren
+ * las pantallas que miran la plantilla (Entrenamiento, Ojeados, Radiografía…).
+ */
 export function buildLineup(
   tactic: Tactic,
   players: Player[],
-  opts: { exclude?: Set<string>; cfg?: ScoringConfig } = {},
+  opts: { exclude?: Set<string>; cfg?: ScoringConfig; locks?: Record<string, string> } = {},
 ): LineupResult {
+  const locks = opts.locks ?? tacticLocks(tactic, "plantilla");
   const cfg = opts.cfg ?? DEFAULT_SCORING;
   const formation = FORMATION_BY_ID[tactic.formationId];
   const pool = players.filter((p) => !opts.exclude?.has(p.uid));
@@ -216,7 +376,7 @@ export function buildLineup(
   // Fijados a mano
   const lockedUid = new Map<number, string>();
   formation.slots.forEach((s, i) => {
-    const uid = tactic.locks[s.id];
+    const uid = locks[s.id];
     if (uid && pool.some((p) => p.uid === uid)) lockedUid.set(i, uid);
   });
   const lockedSet = new Set(lockedUid.values());

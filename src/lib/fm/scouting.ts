@@ -15,7 +15,7 @@
 
 import type { RoleDef } from "./roles";
 import { scoreRole } from "./scoring";
-import { buildLineup, familiarity, type LineupResult, type SlotResult, type Tactic } from "./tactics";
+import { buildLineup, depthMap, familiarity, type LineupResult, type SlotResult, type Tactic } from "./tactics";
 import { personalityTierLevel } from "./personalities";
 import type { AttrKey } from "./attributes";
 import type { Player, PositionSlot } from "./types";
@@ -29,6 +29,8 @@ export interface SquadNeed {
   role: RoleDef;
   starter: SlotResult["starter"];
   depth: SlotResult["depth"];
+  /** Suplente real (segundo XI). */
+  backup: SlotResult["starter"];
   level: NeedLevel;
   reasons: string[];
   /** Puntuación mínima para ser útil (rotación real). */
@@ -42,9 +44,12 @@ export interface SquadNeed {
 /** Necesidades del primer equipo por hueco de la táctica. */
 export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number | null): { lineup: LineupResult; needs: SquadNeed[] } {
   const lineup = buildLineup(tactic, firstTeam);
-  const needs: SquadNeed[] = lineup.slots.map((s) => {
+  // Suplente real: quien juega ese hueco en el segundo XI (cada jugador cuenta una vez)
+  const depth = depthMap(tactic, firstTeam);
+  const needs: SquadNeed[] = lineup.slots.map((s, i) => {
     const st = s.starter?.effective ?? 0;
-    const backup = s.depth[0];
+    const real = depth[i];
+    const backup = real?.backup ?? null;
     const reasons: string[] = [];
     let level: NeedLevel = "cubierto";
     let ageBand: SquadNeed["ageBand"] = "ambos";
@@ -52,9 +57,11 @@ export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number
     const starterAge = s.starter?.player.age ?? 0;
 
     if (!s.starter) { level = "urgente"; reasons.push("Sin nadie para el hueco."); }
-    else if (!backup || backup.effective < st - 12) {
+    else if (!backup || real.tone === "poor") {
       level = "urgente";
-      reasons.push(backup ? `El suplente (${backup.player.name}, ${Math.round(backup.effective)}) está a ${Math.round(st - backup.effective)} puntos del titular.` : "Sin suplente.");
+      reasons.push(!backup ? "Sin suplente: en el segundo XI no queda nadie para el puesto."
+        : backup.familiarity < 0.85 ? `El suplente real (${backup.player.name}) juega fuera de su puesto.`
+        : `El suplente real (${backup.player.name}, ${Math.round(backup.effective)}) está a ${Math.round(st - backup.effective)} puntos del titular.`);
       ageBand = "inmediato";
     } else if (st < lineup.average - 6) {
       level = "mejorable";
@@ -72,7 +79,7 @@ export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number
       reasons.push(`Contrato del titular vence en ${exp}.`);
     }
     return {
-      slotId: s.slot.id, slot: s.slot.slot, role: s.role, starter: s.starter, depth: s.depth, level, reasons,
+      slotId: s.slot.id, slot: s.slot.slot, role: s.role, starter: s.starter, depth: s.depth, backup, level, reasons,
       targetScore: Math.max(st - 8, backup?.effective ?? 0),
       upgradeScore: st + 3,
       ageBand,

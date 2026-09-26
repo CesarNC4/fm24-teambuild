@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { captainCandidates, setPiecePlan, type Taker } from "@/lib/fm/setpieces";
-import { buildLineup, poolPlayers } from "@/lib/fm/tactics";
+import { lineupForPool, POOL_LABEL } from "@/lib/fm/tactics";
 import { useAppStore } from "@/lib/store";
 
 function TakerList({ title, takers, hint }: { title: string; takers: Taker[]; hint?: string }) {
@@ -34,8 +34,7 @@ export default function SetPiecesPage() {
   const firstTeam = useMemo(() => allPlayers.plantilla ?? [], [allPlayers.plantilla]);
   const lineup = useMemo(() => {
     if (!tactic || !firstTeam.length) return null;
-    const pool = poolPlayers(tactic, allPlayers, squads.filter((q) => q.kind === "filial").map((q) => q.id));
-    return pool.players.length ? buildLineup(tactic, pool.players, { exclude: pool.exclude }) : null;
+    return lineupForPool(tactic, allPlayers, squads).lineup;
   }, [tactic, firstTeam.length, allPlayers, squads]);
   const plan = useMemo(() => (lineup ? setPiecePlan(lineup) : null), [lineup]);
   const captains = useMemo(() => captainCandidates(firstTeam, lineup).slice(0, 5), [firstTeam, lineup]);
@@ -51,7 +50,7 @@ export default function SetPiecesPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Balón parado y capitanes</h1>
-        <span className="text-xs text-muted">XI de {tactic.name} ({tactic.pool && tactic.pool !== "plantilla" ? tactic.pool === "segundo" ? "segundo equipo" : tactic.pool === "todos" ? "titulares + filiales" : squads.find((q) => q.id === tactic.pool)?.name : "primer equipo"})</span>
+        <span className="text-xs text-muted">XI de {tactic.name} ({POOL_LABEL[tactic.pool ?? "plantilla"] ?? squads.find((q) => q.id === tactic.pool)?.name ?? "primer equipo"})</span>
       </div>
 
       {plan.notes.length > 0 && (

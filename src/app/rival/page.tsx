@@ -9,7 +9,7 @@ import { POSITION_LABEL, roleLabel } from "@/lib/fm/roles";
 import {
   THREAT_LABEL, oppositionInstructions, rankStylesVsRival, rivalCornerPlan, rivalLeagueLevels, rivalLineup, rivalPressPlan, rivalThreats, rivalWeaknesses, unitDuels, type Tweak,
 } from "@/lib/fm/rival";
-import { buildLineup, poolPlayers, type Tactic } from "@/lib/fm/tactics";
+import { lineupForPool, type Tactic } from "@/lib/fm/tactics";
 import { useAppStore } from "@/lib/store";
 import { coverageText, useLeague } from "@/lib/useLeague";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -42,8 +42,7 @@ export default function RivalPage() {
 
   const ours = useMemo(() => {
     if (!tactic) return null;
-    const pool = poolPlayers(tactic, allPlayers, squads.filter((q) => q.kind === "filial").map((q) => q.id));
-    return pool.players.length ? buildLineup(tactic, pool.players, { exclude: pool.exclude }) : null;
+    return lineupForPool(tactic, allPlayers, squads).lineup;
   }, [tactic, allPlayers, squads]);
   const leaguePool = useLeague();
   const league = useMemo(() => (leaguePool.players.length >= 50 ? buildLeagueStats(leaguePool.players) : null), [leaguePool.players]);
@@ -109,7 +108,7 @@ export default function RivalPage() {
       if (instr.group) instructions = instructions.filter((x) => INSTRUCTION_BY_ID[x].group !== instr.group);
       instructions.push(id);
     }
-    const t: Tactic = { ...tactic, id: `t-${Date.now().toString(36)}`, name: `${tactic.name} vs ${rival.name}`, instructions, locks: { ...tactic.locks } };
+    const t: Tactic = { ...tactic, id: `t-${Date.now().toString(36)}`, name: `${tactic.name} vs ${rival.name}`, instructions, locks: Object.fromEntries(Object.entries(tactic.locks).map(([k, v]) => [k, { ...v }])) };
     addTactic(t);
     setTacticId(t.id);
   };
