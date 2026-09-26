@@ -1,64 +1,53 @@
 /**
- * Entrenamiento: foco individual, calendario semanal de equipo y tutorías.
+ * Entrenamiento: foco individual, semana de equipo calculada (estilo,
+ * carencias y carga) y grupos de aprendizaje. Los datos del juego están en
+ * trainingData.ts.
  */
 
 import type { AttrKey } from "./attributes";
+import { ATTR_BY_KEY } from "./attributes";
 import type { RoleDef } from "./roles";
-import type { Player } from "./types";
+import type { Player, PositionSlot } from "./types";
 import { personalityTierLevel } from "./personalities";
 import { STYLE_BY_ID } from "./stylePresets";
+import type { LineupResult, Tactic } from "./tactics";
+import { FOCUS_AREAS, SESSION_BY_ID, UNTRAINABLE, sessionLoad, type FocusArea } from "./trainingData";
+
+export { FOCUS_AREAS, SESSION_BY_ID, SESSIONS, SESSION_CAT_LABEL, GROUP_LABEL, FAMILIARITY_LABEL, EFFECT_LABEL, UNTRAINABLE, sessionLoad } from "./trainingData";
+export type { FocusArea, Session, SessionCat, SessionPart, Effect } from "./trainingData";
 
 // ===========================================================================
-// Foco individual
+// Unidades (las tres del juego)
 // ===========================================================================
 
-/** Áreas de "foco adicional" del entrenamiento individual de FM24. */
-export interface FocusArea {
-  id: string;
-  es: string;
-  en: string;
-  attrs: AttrKey[];
-  gk?: boolean;
-  /** Físico: rinde poco a partir de cierta edad. */
-  physical?: boolean;
+export type Unit = "portero" | "defensa" | "ataque";
+export const UNIT_LABEL: Record<Unit, string> = { portero: "Unidad de portero", defensa: "Unidad defensiva", ataque: "Unidad de ataque" };
+
+/** Portero; defensiva hasta el MCD (centrales, laterales, carrileros y pivotes); de ataque desde el MC. */
+export function unitOfSlot(s: PositionSlot): Unit {
+  if (s === "GK") return "portero";
+  if (s === "DC" || s === "DR" || s === "DL" || s === "WBR" || s === "WBL" || s === "DM") return "defensa";
+  return "ataque";
 }
 
-export const FOCUS_AREAS: FocusArea[] = [
-  { id: "quickness", es: "Rapidez", en: "Quickness", attrs: ["Acc", "Pac"], physical: true, gk: true },
-  { id: "agility-balance", es: "Agilidad y equilibrio", en: "Agility & Balance", attrs: ["Agi", "Bal"], physical: true, gk: true },
-  { id: "strength", es: "Fuerza", en: "Strength", attrs: ["Str"], physical: true, gk: true },
-  { id: "endurance", es: "Resistencia", en: "Endurance", attrs: ["Sta", "Nat"], physical: true, gk: true },
-  { id: "aerial", es: "Juego aéreo", en: "Aerial", attrs: ["Hea", "Jum"], physical: true },
-  { id: "defending", es: "Defensa", en: "Defending", attrs: ["Mar", "Tck", "Pos"] },
-  { id: "passing", es: "Pase", en: "Passing", attrs: ["Pas", "Vis", "Tec"] },
-  { id: "dribbling", es: "Regate", en: "Dribbling", attrs: ["Dri", "Fla", "Tec"] },
-  { id: "crossing", es: "Centros", en: "Crossing", attrs: ["Cro", "Tec"] },
-  { id: "shooting", es: "Tiro", en: "Shooting", attrs: ["Fin", "Lon", "Cmp"] },
-  { id: "final-third", es: "Último tercio", en: "Final Third", attrs: ["Ant", "Dec", "OtB", "Cmp"] },
-  { id: "ball-control", es: "Control del balón", en: "Ball Control", attrs: ["Fir", "Tec"] },
-  { id: "set-pieces", es: "Balón parado", en: "Set Pieces", attrs: ["Cor", "Fre", "Pen", "L Th"] },
-  // Portero
-  { id: "gk-shot-stopping", es: "Paradas", en: "Shot Stopping", attrs: ["Ref", "1v1", "Agi"], gk: true },
-  { id: "gk-handling", es: "Blocaje", en: "Handling", attrs: ["Han", "Aer", "Cmd"], gk: true },
-  { id: "gk-distribution", es: "Distribución", en: "Distribution", attrs: ["Kic", "Thr", "Pas", "Fir"], gk: true },
-];
+export function unitOf(p: Player): Unit {
+  if (p.isGoalkeeper) return "portero";
+  const x = p.position.slots[0];
+  return x ? unitOfSlot(x) : "ataque";
+}
+
+// ===========================================================================
+// Foco individual (opcional)
+// ===========================================================================
 
 export interface FocusRecommendation {
   area: FocusArea;
   /** Suma ponderada del déficit respecto al objetivo del rol. */
   deficit: number;
-  /** Atributos del área con su valor y objetivo. */
   detail: { key: AttrKey; have: number | null; target: number }[];
   note: string | null;
 }
 
-/**
- * Atributos "absolutos": apenas cambian con entrenamiento (solo con la edad o
- * por tutoría), así que no tiene sentido enfocarlos.
- */
-export const UNTRAINABLE: AttrKey[] = ["Det", "Wor", "Nat", "Ldr"];
-
-/** Objetivo por atributo según importancia para el rol. */
 function targetFor(role: RoleDef, key: AttrKey): { target: number; weight: number } | null {
   if (UNTRAINABLE.includes(key)) return null;
   if (role.key.includes(key)) return { target: 15, weight: 2 };
@@ -66,33 +55,29 @@ function targetFor(role: RoleDef, key: AttrKey): { target: number; weight: numbe
   return null;
 }
 
+/** Áreas ordenadas por déficit respecto al rol. Los porteros ven las suyas y las físicas. */
 export function recommendFocus(player: Player, role: RoleDef): FocusRecommendation[] {
   const age = player.age ?? 25;
-  const areas = FOCUS_AREAS.filter((a) => (player.isGoalkeeper ? !!a.gk : !a.id.startsWith("gk-")));
+  const areas = FOCUS_AREAS.filter((a) => (player.isGoalkeeper ? a.group === "portero" || a.physical : a.group === "campo"));
   return areas
     .map((area) => {
       let deficit = 0;
       const detail: FocusRecommendation["detail"] = [];
-      // El área solo cuenta si al menos la mitad de sus atributos importan al rol
-      // (evita sugerir "Tiro" a un central porque Serenidad esté en el área).
+      // Solo cuenta si al menos la mitad de sus atributos importan al rol.
       const relevant = area.attrs.filter((k) => targetFor(role, k)).length;
       if (relevant * 2 < area.attrs.length) return { area, deficit: 0, detail, note: null };
       for (const key of area.attrs) {
         const t = targetFor(role, key);
         if (!t) continue;
         const have = player.attrs[key]?.value ?? null;
-        const gap = have == null ? 0 : Math.max(0, t.target - have);
-        deficit += gap * t.weight;
+        deficit += have == null ? 0 : Math.max(0, t.target - have) * t.weight;
         detail.push({ key, have, target: t.target });
       }
-      // Los físicos apenas mejoran a partir de los 27-28 y decaen desde ~30.
       let note: string | null = null;
       if (area.physical && age >= 30) { deficit *= 0.2; note = "físico a los 30+: solo para frenar el declive"; }
       else if (area.physical && age >= 27) { deficit *= 0.5; note = "físico a los 27+: mejora lenta"; }
       else if (area.physical && age <= 21) { deficit *= 1.3; note = "físico con ≤21 años: la mejor edad para desarrollarlo"; }
       else if (!area.physical && age >= 32) { deficit *= 0.7; note = "a los 32+ la mejora técnica/mental es lenta"; }
-      // Los mentales son los que más tardan en subir (físicos > técnicos > mentales).
-      else if (area.id === "final-third") { deficit *= 0.85; note = "área mental: la mejora es la más lenta de todas"; }
       return { area, deficit, detail, note };
     })
     .filter((r) => r.detail.length > 0 && r.deficit > 0)
@@ -100,13 +85,20 @@ export function recommendFocus(player: Player, role: RoleDef): FocusRecommendati
 }
 
 /**
- * Carga individual recomendada. La regla de la guía de entrenamiento es que la
- * intensidad individual se deje en "Automática" y que la carga total (foco
- * adicional + rasgo + pie débil) no pase de "Media": si el juego la marca en
- * Alta, se quita algo. Aquí se estima cuántos extras aguanta cada jugador.
+ * Por defecto sin foco: los PDF coinciden en que diluye el entrenamiento del
+ * rol. Solo se propone ante una carencia clara (un atributo clave 3 o más por
+ * debajo del objetivo, o déficit total alto) y en jugadores que aún crecen.
  */
+export function clearFocus(player: Player, role: RoleDef): FocusRecommendation | null {
+  const best = recommendFocus(player, role)[0];
+  if (!best) return null;
+  const keyGap = best.detail.some((d) => d.have != null && role.key.includes(d.key) && d.target - d.have >= 3);
+  if ((player.age ?? 25) >= 30) return null;
+  return keyGap || best.deficit >= 8 ? best : null;
+}
+
+/** Extras simultáneos (foco adicional, rasgo, pierna mala) que aguanta sin que la carga individual pase de Media. */
 export interface LoadRecommendation {
-  /** Extras simultáneos (foco adicional, rasgo, pie débil) que aguanta sin pasar de Media. */
   extras: 0 | 1 | 2;
   why: string;
 }
@@ -114,226 +106,348 @@ export interface LoadRecommendation {
 export function recommendLoad(player: Player): LoadRecommendation {
   const age = player.age ?? 25;
   const nat = player.attrs.Nat?.value ?? 12;
-  if (age >= 33 || nat <= 7) return { extras: 0, why: `${age >= 33 ? "veterano" : "forma física natural muy baja"}: solo entrenamiento de rol, nada extra` };
-  if (age >= 30 || nat <= 10) return { extras: 1, why: age >= 30 ? "30+: un solo extra (foco o rasgo), el resto es riesgo de lesión" : "forma física natural baja: un solo extra" };
-  if (age <= 23 && nat >= 14) return { extras: 2, why: "joven y con buena forma física natural: foco + rasgo sin pasar de Media" };
-  return { extras: 2, why: "carga normal: foco + rasgo, pero vigila que la intensidad total no marque Alta" };
+  if (age >= 33 || nat <= 7) return { extras: 0, why: `${age >= 33 ? "veterano" : "recuperación física muy baja"}: solo entrenamiento de rol, nada extra` };
+  if (age >= 30 || nat <= 10) return { extras: 1, why: age >= 30 ? "30+: un solo extra (foco o rasgo), el resto es riesgo de lesión" : "recuperación física baja: un solo extra" };
+  if (age <= 23 && nat >= 14) return { extras: 2, why: "joven y con buena recuperación física: foco + rasgo sin pasar de Media" };
+  return { extras: 2, why: "carga normal: foco + rasgo, pero vigila que la carga total no marque Alta" };
+}
+
+/** Intensidad individual: automática (el juego aplica el descanso por el corazón) y doble para jóvenes sanos. */
+export function recommendIntensity(player: Player): { level: "Doble" | "Automática"; why: string } {
+  const age = player.age ?? 25;
+  const nat = player.attrs.Nat?.value ?? 12;
+  const injured = /les/i.test(player.info ?? "");
+  if (age <= 21 && nat >= 12 && !injured) return { level: "Doble", why: "≤21 años y sano: más desarrollo; bájala si el corazón se pone amarillo" };
+  return { level: "Automática", why: "el juego regula el descanso según la condición" };
 }
 
 // ===========================================================================
-// Calendario semanal de equipo
+// Sesiones que pide la táctica (instrucciones reales, no solo el estilo)
 // ===========================================================================
 
-export type SessionCategory = "general" | "tactica" | "ataque" | "defensa" | "fisico" | "tecnica" | "extra";
-
-export interface Session {
+export interface SessionPick {
   id: string;
-  es: string;
-  en: string;
-  category: SessionCategory;
+  why: string;
 }
 
-export const SESSIONS: Session[] = [
-  { id: "rest", es: "Descanso", en: "Rest", category: "general" },
-  { id: "recovery", es: "Recuperación", en: "Recovery", category: "general" },
-  { id: "match-practice", es: "Partido de práctica", en: "Match Practice", category: "general" },
-  { id: "team-bonding", es: "Cohesión de equipo", en: "Team Bonding", category: "general" },
-  { id: "physical", es: "Físico", en: "Physical", category: "general" },
-  { id: "match-preview", es: "Previa del partido", en: "Match Preview", category: "tactica" },
-  { id: "match-review", es: "Análisis del partido", en: "Match Review", category: "tactica" },
-  { id: "tactical", es: "Táctica", en: "Tactical", category: "tactica" },
-  { id: "teamwork", es: "Trabajo en equipo", en: "Teamwork", category: "tactica" },
-  { id: "att-direct", es: "Ataque directo", en: "Attacking Direct", category: "ataque" },
-  { id: "att-patient", es: "Ataque paciente", en: "Attacking Patient", category: "ataque" },
-  { id: "att-wings", es: "Ataque por bandas", en: "Attacking Wings", category: "ataque" },
-  { id: "att-movement", es: "Movimiento ofensivo", en: "Attacking Movement", category: "ataque" },
-  { id: "chance-creation", es: "Creación de ocasiones", en: "Chance Creation", category: "ataque" },
-  { id: "chance-conversion", es: "Definición", en: "Chance Conversion", category: "ataque" },
-  { id: "att-shadow", es: "Juego sombra ofensivo", en: "Att Shadow Play", category: "ataque" },
-  { id: "def-shape", es: "Estructura defensiva", en: "Defensive Shape", category: "defensa" },
-  { id: "def-engaged", es: "Defensa presionante", en: "Defending Engaged", category: "defensa" },
-  { id: "def-disengaged", es: "Defensa replegada", en: "Defending Disengaged", category: "defensa" },
-  { id: "def-front", es: "Defender desde arriba", en: "Defending From The Front", category: "defensa" },
-  { id: "def-wide", es: "Defensa en banda", en: "Defending Wide", category: "defensa" },
-  { id: "transition-press", es: "Transición: presión", en: "Transition Press", category: "defensa" },
-  { id: "transition-restrict", es: "Transición: contención", en: "Transition Restrict", category: "defensa" },
-  { id: "def-shadow", es: "Juego sombra defensivo", en: "Def Shadow Play", category: "defensa" },
-  { id: "endurance", es: "Resistencia", en: "Endurance", category: "fisico" },
-  { id: "quickness", es: "Rapidez", en: "Quickness", category: "fisico" },
-  { id: "resistance", es: "Fuerza y resistencia", en: "Resistance", category: "fisico" },
-  { id: "ball-distribution", es: "Distribución del balón", en: "Ball Distribution", category: "tecnica" },
-  { id: "ball-retention", es: "Retención del balón", en: "Ball Retention", category: "tecnica" },
-  { id: "goalkeeping", es: "Porteros", en: "Goalkeeping", category: "tecnica" },
-  { id: "sp-attacking", es: "Balón parado ofensivo", en: "Set Pieces: Attacking", category: "extra" },
-  { id: "sp-defending", es: "Balón parado defensivo", en: "Set Pieces: Defending", category: "extra" },
-  { id: "gen-outfield", es: "Jugadores de campo", en: "Outfield", category: "general" },
-];
+export interface TacticSessions {
+  attack: SessionPick[];
+  defend: SessionPick[];
+  physical: SessionPick[];
+}
 
-export const SESSION_BY_ID: Record<string, Session> = Object.fromEntries(SESSIONS.map((s) => [s.id, s]));
+function push(list: SessionPick[], id: string, why: string) {
+  const prev = list.find((x) => x.id === id);
+  if (prev) { if (!prev.why.includes(why)) prev.why += `; ${why}`; return; }
+  list.push({ id, why });
+}
 
-/** Sesiones características de cada estilo, por prioridad. */
-const STYLE_SESSIONS: Record<string, { attack: string[]; defend: string[]; physical: string[] }> = {
-  transiciones: { attack: ["att-direct", "chance-conversion", "att-movement", "att-shadow"], defend: ["transition-press", "def-shape", "def-engaged", "def-shadow"], physical: ["quickness", "endurance"] },
-  gegenpress: { attack: ["att-movement", "chance-creation", "att-patient", "att-shadow"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
-  posesion: { attack: ["att-patient", "chance-creation", "att-movement", "ball-retention"], defend: ["def-shape", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "resistance"] },
-  "tiki-vertical": { attack: ["att-movement", "chance-creation", "att-direct", "ball-retention"], defend: ["transition-press", "def-front", "def-shape", "def-shadow"], physical: ["quickness", "endurance"] },
-  "bloque-bajo": { attack: ["att-direct", "chance-conversion", "att-wings", "att-shadow"], defend: ["def-disengaged", "transition-restrict", "def-shape", "def-shadow"], physical: ["quickness", "resistance"] },
-  "tiki-taka": { attack: ["att-patient", "ball-retention", "att-movement", "chance-creation"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
-  "contra-fluido": { attack: ["att-movement", "att-direct", "chance-creation", "att-shadow"], defend: ["def-shape", "transition-restrict", "def-disengaged", "def-shadow"], physical: ["quickness", "endurance"] },
-  "route-one": { attack: ["att-direct", "att-wings", "chance-conversion", "sp-attacking"], defend: ["def-shape", "def-disengaged", "def-wide", "sp-defending"], physical: ["resistance", "endurance"] },
-  bandas: { attack: ["att-wings", "chance-creation", "chance-conversion", "att-shadow"], defend: ["def-wide", "def-shape", "transition-restrict", "def-shadow"], physical: ["quickness", "endurance"] },
-  autobus: { attack: ["att-direct", "chance-conversion", "sp-attacking", "att-shadow"], defend: ["def-disengaged", "def-shape", "def-wide", "def-shadow"], physical: ["resistance", "endurance"] },
-  catenaccio: { attack: ["att-direct", "att-wings", "chance-conversion", "att-shadow"], defend: ["def-shape", "def-disengaged", "transition-restrict", "def-shadow"], physical: ["resistance", "quickness"] },
-  "juego-posicion": { attack: ["att-patient", "att-movement", "chance-creation", "ball-retention"], defend: ["transition-press", "def-shape", "def-front", "def-shadow"], physical: ["endurance", "quickness"] },
-  "cebar-presion": { attack: ["ball-retention", "att-patient", "att-movement", "chance-creation"], defend: ["def-front", "transition-press", "def-shape", "def-shadow"], physical: ["endurance", "quickness"] },
-  relacionismo: { attack: ["att-movement", "ball-retention", "chance-creation", "att-patient"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "resistance"] },
-  "futbol-total": { attack: ["att-movement", "chance-creation", "att-wings", "att-shadow"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
-  "presion-hombre": { attack: ["att-direct", "att-movement", "chance-conversion", "att-shadow"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "resistance"] },
-  "gegenpress-vertical": { attack: ["att-direct", "chance-conversion", "att-movement", "att-shadow"], defend: ["def-front", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
-  "presion-dos-mediapuntas": { attack: ["att-movement", "chance-creation", "att-patient", "att-shadow"], defend: ["def-front", "transition-press", "def-shape", "def-shadow"], physical: ["endurance", "quickness"] },
-  "control-directo": { attack: ["att-direct", "att-patient", "chance-creation", "att-wings"], defend: ["def-front", "transition-press", "def-shape", "def-shadow"], physical: ["quickness", "endurance"] },
-  cholismo: { attack: ["att-direct", "chance-conversion", "sp-attacking", "att-shadow"], defend: ["def-shape", "def-engaged", "def-wide", "sp-defending"], physical: ["resistance", "endurance"] },
-  "contra-directo": { attack: ["att-direct", "chance-conversion", "att-movement", "att-shadow"], defend: ["def-shape", "def-engaged", "transition-restrict", "def-shadow"], physical: ["quickness", "resistance"] },
-  reactivo: { attack: ["att-direct", "chance-conversion", "att-movement", "att-shadow"], defend: ["def-shape", "def-disengaged", "transition-restrict", "def-shadow"], physical: ["quickness", "resistance"] },
-  "rombo-pragmatico": { attack: ["att-movement", "chance-creation", "att-direct", "att-shadow"], defend: ["def-shape", "transition-restrict", "def-engaged", "def-shadow"], physical: ["quickness", "endurance"] },
-  "carrileros-directos": { attack: ["att-wings", "att-direct", "chance-conversion", "att-shadow"], defend: ["def-wide", "def-shape", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
-  default: { attack: ["att-movement", "chance-creation", "att-direct", "att-shadow"], defend: ["def-shape", "transition-press", "def-engaged", "def-shadow"], physical: ["endurance", "quickness"] },
-};
+/**
+ * Matriz de los PDF: cada instrucción de la táctica pide una sesión concreta.
+ * Si la táctica no tiene instrucciones propias se usan las de su estilo.
+ */
+export function tacticSessions(tactic: Tactic | null): TacticSessions {
+  const out: TacticSessions = { attack: [], defend: [], physical: [] };
+  const preset = tactic?.styleId ? STYLE_BY_ID[tactic.styleId] : null;
+  const ins = new Set(tactic?.instructions?.length ? tactic.instructions : preset?.instructions ?? []);
+  const has = (...ids: string[]) => ids.some((i) => ins.has(i));
+  const roles = Object.values(tactic?.roles ?? {});
+
+  // Defensa
+  if (has("contrapresionar")) push(out.defend, "tec-trans-presionar", "Contrapresión (nunca Restringir)");
+  if (has("linea-presion-alta", "presionar-mas", "presionar-mucho-mas")) push(out.defend, "def-arriba", "presión alta");
+  if (has("linea-def-alta", "linea-def-mucho-mas-alta")) push(out.defend, "def-rasos", "línea alta: balones a la espalda");
+  if (has("reagruparse") && !has("contrapresionar")) push(out.defend, "tec-trans-restringir", "Reagruparse");
+  if (has("linea-presion-baja", "linea-def-baja", "linea-def-mucho-mas-baja")) push(out.defend, "def-esperando", "bloque bajo");
+  if (has("evitar-centros")) push(out.defend, "def-bandas", "Evitar centros");
+  if (has("permitir-centros")) push(out.defend, "def-aereos", "Permitir centros: defender el área");
+  push(out.defend, "def-posesion", "base defensiva de cualquier estilo");
+  push(out.defend, "tac-defender", "familiaridad táctica sin balón");
+
+  // Ataque
+  if (has("pases-cortos", "pases-mucho-mas-cortos", "ritmo-bajo", "ritmo-mucho-mas-bajo")) {
+    push(out.attack, "tec-retencion", "posesión");
+    push(out.attack, "att-paciente", "posesión");
+  }
+  const sk = roles.some((r) => r.startsWith("SK-"));
+  if (has("salir-jugando", "gk-saque-corto", "gk-rodar", "gk-a-defensas") || sk) {
+    push(out.attack, "tec-desde-atras", sk ? "portero cierre / salida en corto" : "salida en corto");
+    push(out.attack, "gk-distribucion", sk ? "portero cierre" : "portero que sale jugando");
+  }
+  if (has("pases-directos", "pases-mucho-mas-directos", "pasar-espacio", "contraatacar")) push(out.attack, "att-directo", "juego directo / a la contra");
+  const wide = has("amplitud-amplia", "amplitud-muy-amplia", "explotar-bandas", "explotar-izq", "explotar-der", "centros-tempranos", "centros-mixtos", "centros-rasos", "centros-rosca", "centros-colgados");
+  const overlap = has("desmarque-fuera-izq", "desmarque-fuera-der", "desmarque-dentro-izq", "desmarque-dentro-der") || roles.some((r) => /^(FB|WB|CWB|WCB)-A$/.test(r));
+  if (wide) push(out.attack, "att-bandas", "juego por bandas");
+  if (overlap) push(out.attack, "att-doblando", "laterales o carrileros que doblan");
+  if (has("trabajar-area", "mas-creatividad")) push(out.attack, "tec-creacion", "elaborar hasta el área");
+  push(out.attack, "tec-convertir", "vale para cualquier estilo");
+  push(out.attack, "tac-atacar", "familiaridad táctica con balón");
+
+  // Físico
+  if (has("presionar-mas", "presionar-mucho-mas", "contrapresionar", "ritmo-alto", "ritmo-mucho-mas-alto")) push(out.physical, "fis-aguante", "presión y ritmo alto piden resistencia");
+  if (has("contraatacar", "pasar-espacio", "linea-def-alta", "linea-def-mucho-mas-alta")) push(out.physical, "fis-rapidez", "transiciones y línea alta piden velocidad");
+  push(out.physical, "fis-resistencia", "fuerza");
+  push(out.physical, "gen-fisico", "general");
+  return out;
+}
+
+// ===========================================================================
+// Sesiones por carencias del XI
+// ===========================================================================
+
+export interface NeedSession {
+  id: string;
+  score: number;
+  /** Atributos flojos que cubre, con la media de la unidad. */
+  weak: { key: AttrKey; mean: number }[];
+  unit: Unit;
+}
+
+/**
+ * Para cada unidad del XI, cuánto le falta en cada atributo respecto a lo que
+ * piden los roles de sus jugadores (clave 15, preferible 13). Luego puntúa
+ * las sesiones de desarrollo por los atributos flojos que trabaja su grupo
+ * principal (el del 60 %).
+ */
+export function needSessions(lineup: LineupResult | null): NeedSession[] {
+  if (!lineup) return [];
+  const gaps: Record<Unit, Map<AttrKey, { gap: number; sum: number; n: number }>> = { portero: new Map(), defensa: new Map(), ataque: new Map() };
+  for (const s of lineup.slots) {
+    const p = s.starter?.player;
+    if (!p) continue;
+    const unit = unitOfSlot(s.slot.slot);
+    for (const key of [...s.role.key, ...s.role.pref]) {
+      const t = targetFor(s.role, key);
+      const v = p.attrs[key]?.value;
+      if (!t || v == null) continue;
+      const e = gaps[unit].get(key) ?? { gap: 0, sum: 0, n: 0 };
+      e.gap += Math.max(0, t.target - v) * t.weight;
+      e.sum += v;
+      e.n++;
+      gaps[unit].set(key, e);
+    }
+  }
+  const candidates = ["att-directo", "att-bandas", "att-doblando", "att-paciente", "def-posesion", "def-esperando", "def-bandas", "def-rasos", "def-aereos", "def-arriba",
+    "tec-convertir", "tec-creacion", "tec-distribucion", "tec-trans-presionar", "tec-trans-restringir", "tec-retencion", "tec-desde-atras", "tac-atacar", "tac-defender",
+    "gk-paradas", "gk-blocaje", "gk-1v1", "gk-distribucion"];
+  const out: NeedSession[] = [];
+  for (const id of candidates) {
+    const s = SESSION_BY_ID[id];
+    const main = s.parts.reduce((a, b) => (b.pct > a.pct ? b : a));
+    if (main.attrs === "roles") continue;
+    const unit: Unit = main.group === "porteros" ? "portero" : main.group === "defensa" ? "defensa" : "ataque";
+    const g = gaps[unit];
+    const weak = main.attrs
+      .map((key) => ({ key, e: g.get(key) }))
+      .filter((x): x is { key: AttrKey; e: { gap: number; sum: number; n: number } } => !!x.e && x.e.gap / x.e.n >= 1.5)
+      .map((x) => ({ key: x.key, mean: x.e.sum / x.e.n, gap: x.e.gap / x.e.n }));
+    if (weak.length < 2 && !(unit === "portero" && weak.length)) continue;
+    const score = weak.reduce((a, w) => a + w.gap, 0) / Math.sqrt(main.attrs.length);
+    out.push({ id, score, weak: weak.sort((a, b) => a.mean - b.mean).map(({ key, mean }) => ({ key, mean })), unit });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+export function needText(n: NeedSession): string {
+  return `${UNIT_LABEL[n.unit]} floja en ${n.weak.slice(0, 3).map((w) => `${ATTR_BY_KEY[w.key].es} ${w.mean.toFixed(1)}`).join(", ")}`;
+}
+
+// ===========================================================================
+// Semana de equipo
+// ===========================================================================
 
 export const DAY_LABEL = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
-export interface DayPlan {
-  day: number;
-  isMatch: boolean;
-  /** Hasta 3 sesiones (mañana, tarde, noche). null = vacío. */
-  sessions: (string | null)[];
-}
+export type RivalLevel = "superior" | "igual" | "inferior";
+export const RIVAL_LEVEL_LABEL: Record<RivalLevel, string> = { superior: "Rival superior", igual: "Rival parejo", inferior: "Rival inferior" };
+
+export interface MatchInfo { home: boolean; rival: RivalLevel }
 
 export type WeekGoal = "normal" | "cohesion" | "defensa" | "ataque";
 export const WEEK_GOAL_LABEL: Record<WeekGoal, string> = {
-  normal: "Normal (estilo de la táctica)",
+  normal: "Normal (lo que pide la táctica)",
   cohesion: "Cohesión (fichajes nuevos / vestuario)",
   defensa: "Cerrar la portería",
   ataque: "Crear y marcar más",
 };
 
-export interface WeekOptions {
-  styleId: string | null;
-  /** Días con partido (0 = lunes … 6 = domingo). */
+/** Lo que se guarda en el store. */
+export interface TrainingWeekSettings {
   matchDays: number[];
   preseason: boolean;
-  /** Objetivo de la semana (schedules de escenario de Passion4FM). */
-  goal?: WeekGoal;
-  /** Número de semana para rotar las sesiones de ataque/defensa (guía de jonasmorais). */
+  goal?: string;
   weekIndex?: number;
+  youthTheme?: string;
+  /** Día → local/visitante y nivel del rival. */
+  matchInfo?: Record<string, MatchInfo>;
+  /** Partido el domingo de la semana anterior / el lunes de la siguiente. */
+  prevSunday?: boolean;
+  nextMonday?: boolean;
 }
 
-/** Sesiones de los escenarios "Shut up shop" y "Chance creation" del megapack. */
-const GOAL_SESSIONS: Record<Exclude<WeekGoal, "normal">, { attack: string[]; defend: string[] }> = {
-  cohesion: { attack: ["teamwork", "att-movement", "team-bonding", "ball-retention"], defend: ["def-shape", "teamwork", "team-bonding", "def-shadow"] },
-  defensa: { attack: ["transition-restrict", "att-direct", "chance-conversion", "sp-attacking"], defend: ["def-shape", "def-disengaged", "def-wide", "def-shadow"] },
-  ataque: { attack: ["chance-creation", "chance-conversion", "att-movement", "att-shadow"], defend: ["transition-press", "def-front", "sp-defending", "def-shape"] },
+export interface DayPlan {
+  day: number;
+  isMatch: boolean;
+  match?: MatchInfo;
+  /** Hasta 3 sesiones (mañana, tarde, noche). "match" = partido; null = vacío. */
+  sessions: (string | null)[];
+  /** Carga física del día (suma de riesgo de lesión, fatiga y bajada de condición). */
+  load: number;
+}
+
+export interface WeekPlan {
+  days: DayPlan[];
+  /** Por qué sale cada sesión que no es de rutina. */
+  reasons: { id: string; why: string }[];
+  warnings: string[];
+}
+
+export interface WeekOptions {
+  matchDays: number[];
+  matchInfo?: Record<string, MatchInfo>;
+  prevSunday?: boolean;
+  nextMonday?: boolean;
+  preseason: boolean;
+  goal?: WeekGoal;
+  weekIndex?: number;
+  tactic: TacticSessions;
+  needs: NeedSession[];
+}
+
+const GOAL_OVERRIDE: Record<Exclude<WeekGoal, "normal">, { attack: string[]; defend: string[] }> = {
+  cohesion: { attack: ["tac-atacar", "tec-retencion", "prep-practica"], defend: ["tac-defender", "def-posesion"] },
+  defensa: { attack: ["tec-trans-restringir", "att-directo", "tec-convertir"], defend: ["def-esperando", "def-aereos", "def-bandas", "tac-defender"] },
+  ataque: { attack: ["tec-creacion", "tec-convertir", "tac-atacar", "att-paciente"], defend: ["tec-trans-presionar", "def-arriba"] },
 };
 
 /**
- * Genera una semana con las reglas de las guías de entrenamiento:
- * - día después del partido: recuperación + análisis (y descanso si hay dos partidos);
- * - la carga sube dos días después del partido y baja hacia el siguiente;
- * - días alternos fuerte/ligero, físico nunca la víspera ni con dos partidos;
- * - la sesión de ataque de mitad de semana y la defensiva del final rotan
- *   entre semanas; previa el día anterior;
- * - pretemporada sin partidos = física pura; con partidos = física + táctica.
+ * Semana calculada. Reglas (PDF de entrenamiento y microciclo del manual):
+ * - día después: Revisión de partido + Recuperación; víspera: Tácticas de
+ *   partido + balón parado + Enfoque del partido (fuera: Viaje);
+ * - dos días después del partido, el pico de carga (físico); dos días antes,
+ *   Práctica de partido o Jugadores de campo;
+ * - el resto de días, sesiones de la táctica y de carencias, alternando;
+ * - rival superior: primero lo defensivo; inferior: primero lo ofensivo;
+ * - dos partidos: sin físico; tres: solo recuperación, revisión, tácticas y
+ *   balón parado.
  */
-export function buildWeek(opts: WeekOptions): DayPlan[] {
+export function buildWeek(opts: WeekOptions): WeekPlan {
   const goal = opts.goal ?? "normal";
-  // Estilos evolucionados sin sesiones propias heredan las del estilo padre
-  const sid = opts.styleId === "directo" ? "bandas" : opts.styleId ?? "default";
-  const base = STYLE_SESSIONS[sid] ?? STYLE_SESSIONS[STYLE_BY_ID[sid]?.parent ?? ""] ?? STYLE_SESSIONS.default;
-  const st = goal === "normal" ? base : { ...base, ...GOAL_SESSIONS[goal] };
   const wk = opts.weekIndex ?? 0;
   const matchSet = new Set(opts.matchDays);
-  const days: DayPlan[] = Array.from({ length: 7 }, (_, d) => ({ day: d, isMatch: matchSet.has(d), sessions: [null, null, null] }));
-  const prevMatch = (d: number) => matchSet.has((d + 6) % 7);
-  const nextMatch = (d: number) => matchSet.has((d + 1) % 7);
-  const twoMatches = opts.matchDays.length >= 2;
-  const noMatches = opts.matchDays.length === 0;
+  // Fuera de la semana se asume el mismo calendario, salvo el domingo anterior y el lunes siguiente si los marcas.
+  const prevSunday = opts.prevSunday ?? matchSet.has(6);
+  const nextMonday = opts.nextMonday ?? matchSet.has(0);
+  const isMatch = (d: number) =>
+    d === -1 ? prevSunday : d === 7 ? nextMonday : d < -1 ? matchSet.has(d + 7) : d > 7 ? matchSet.has(d - 7) : matchSet.has(d);
+  const info = (d: number): MatchInfo => opts.matchInfo?.[String(d)] ?? { home: true, rival: "igual" };
+  const reasons = new Map<string, string>();
+  const note = (id: string, why: string) => { if (!reasons.has(id)) reasons.set(id, why); };
 
-  // Rotación entre semanas: cada semana empieza en una sesión distinta de la lista
-  let ai = wk, di = wk, pi = 0;
-  const next = (arr: string[], i: number) => arr[i % arr.length];
-  /** Días desde el último partido (1 = día siguiente). 0 si no hay partidos. */
-  const sinceMatch = (d: number) => {
-    if (noMatches) return 0;
-    for (let k = 1; k <= 7; k++) if (matchSet.has((d - k + 7) % 7)) return k;
-    return 0;
-  };
+  const attack = goal === "normal" ? opts.tactic.attack.map((x) => x.id) : GOAL_OVERRIDE[goal].attack;
+  const defend = goal === "normal" ? opts.tactic.defend.map((x) => x.id) : GOAL_OVERRIDE[goal].defend;
+  for (const x of [...opts.tactic.attack, ...opts.tactic.defend, ...opts.tactic.physical]) if (goal === "normal" || x.id.startsWith("fis-")) note(x.id, x.why);
+  if (goal !== "normal") for (const id of [...GOAL_OVERRIDE[goal].attack, ...GOAL_OVERRIDE[goal].defend]) note(id, WEEK_GOAL_LABEL[goal]);
+  const needs = opts.needs.filter((n) => !attack.includes(n.id) && !defend.includes(n.id)).slice(0, 4);
+  for (const n of needs) note(n.id, needText(n));
+  const physical = opts.tactic.physical.map((x) => x.id);
 
+  // Rotación entre semanas: cada semana empieza en otro punto de las listas
+  let ai = wk, di = wk, ni = wk, pi = wk;
+  const pick = (arr: string[], i: number) => (arr.length ? arr[i % arr.length] : null);
+  const nextAttack = () => pick(attack, ai++);
+  const nextDefend = () => pick(defend, di++);
+  const nextNeed = () => (needs.length ? needs[ni++ % needs.length].id : nextAttack());
+  const nextPhysical = () => pick(physical, pi++);
+
+  const since = (d: number) => { for (let k = 1; k <= 8; k++) if (isMatch(d - k)) return k; return 0; };
+  const until = (d: number) => { for (let k = 1; k <= 8; k++) if (isMatch(d + k)) return { k, day: d + k }; return null; };
+  const nMatches = opts.matchDays.length;
+
+  const days: DayPlan[] = Array.from({ length: 7 }, (_, d) => ({ day: d, isMatch: matchSet.has(d), match: matchSet.has(d) ? info(d) : undefined, sessions: [null, null, null], load: 0 }));
   for (const day of days) {
+    const d = day.day;
     if (day.isMatch) { day.sessions = ["match", null, null]; continue; }
-    const after = prevMatch(day.day);
-    const before = nextMatch(day.day);
+    const after = isMatch(d - 1);
+    const nxt = until(d);
+    const before = nxt?.k === 1;
+    const away = before && nxt.day <= 6 ? !info(nxt.day).home : false;
+    const eve: (string | null)[] = away ? ["prep-tacticas", "prep-enfoque", "viaje"] : ["prep-tacticas", "bp-rutinas", "prep-enfoque"];
 
-    if (opts.preseason) {
-      if (noMatches) {
-        // Semanas 1-2 de pretemporada: solo condición física y cohesión
-        const phys = ["endurance", "resistance", "quickness", "physical"];
-        if (day.day === 6) { day.sessions = ["rest", null, null]; continue; }
-        day.sessions = [next(phys, pi++), day.day % 2 === 0 ? "team-bonding" : "ball-retention", day.day % 2 === 0 ? next(phys, pi++) : "teamwork"];
-        continue;
-      }
-      if (before) { day.sessions = ["match-preview", "team-bonding", null]; continue; }
-      if (after) { day.sessions = ["recovery", "match-review", null]; continue; }
-      const third = ["team-bonding", "tactical", "match-practice"][day.day % 3];
-      day.sessions = [next(st.physical, pi++), day.day % 2 === 0 ? next(st.attack, ai++) : next(st.defend, di++), third];
+    if (opts.preseason && nMatches === 0) {
+      // Primeras semanas de pretemporada: días duros de físico alternos con táctica y cohesión, domingo libre
+      if (d === 6) { day.sessions = ["fis-descanso", null, null]; continue; }
+      const phys = ["fis-aguante", "fis-resistencia", "fis-rapidez"];
+      day.sessions = d % 2 === 0 ? [phys[(d / 2 + wk) % phys.length], "ext-cohesion", null] : ["gen-tactica", "tec-retencion", "fis-recuperacion"];
+      note("ext-cohesion", "pretemporada: el grupo se conoce");
       continue;
     }
-    if (after && before) { day.sessions = ["recovery", "match-review", "match-preview"]; continue; }
-    if (after) { day.sessions = ["recovery", "match-review", twoMatches ? "rest" : null]; continue; }
-    if (before) { day.sessions = ["match-preview", twoMatches ? "rest" : goal === "defensa" ? "sp-defending" : "sp-attacking", null]; continue; }
-
-    if (twoMatches) {
-      // Entre partidos: una sesión táctica y descanso; sin físico
-      day.sessions = [sinceMatch(day.day) === 2 ? next(st.attack, ai++) : next(st.defend, di++), "rest", null];
+    if (after && before) { day.sessions = ["prep-revision", "fis-recuperacion", "prep-enfoque"]; continue; }
+    if (after) { day.sessions = ["prep-revision", "fis-recuperacion", nMatches >= 2 ? "fis-descanso" : null]; continue; }
+    if (before) { day.sessions = eve; continue; }
+    if (nMatches >= 3) { day.sessions = ["fis-recuperacion", "bp-rutinas", "fis-descanso"]; continue; }
+    if (nMatches === 0 && !prevSunday && !nextMonday) {
+      // Parón: desarrollo puro, dos días de físico, domingo libre
+      if (d === 6) { day.sessions = ["fis-descanso", null, null]; continue; }
+      if (d === 0) { day.sessions = ["fis-recuperacion", nextNeed(), null]; continue; }
+      day.sessions = d % 2 === 0 ? [nextAttack(), nextNeed(), d <= 3 ? nextPhysical() : null] : [nextDefend(), nextNeed(), null];
       continue;
     }
-    const k = sinceMatch(day.day);
-    if (noMatches) {
-      // Parón: desarrollo puro alternando ataque/defensa, físico dos veces
-      day.sessions = day.day % 2 === 0
-        ? [next(st.attack, ai++), pi < 2 ? next(st.physical, pi++) : "teamwork", null]
-        : [next(st.defend, di++), "ball-retention", null];
-    } else if (k === 2) {
-      // Pico de carga: físico + sesión del estilo
-      day.sessions = [next(st.physical, pi++), next(st.attack, ai++), "teamwork"];
-    } else if (nextMatch((day.day + 1) % 7)) {
-      // Dos días antes del partido: sesión defensiva rotatoria y ligero
-      day.sessions = [next(st.defend, di++), "rest", null];
-    } else if (k % 2 === 1) {
-      // Día ligero
-      day.sessions = [next(st.attack, ai++), goal === "cohesion" ? "team-bonding" : "rest", null];
-    } else {
-      day.sessions = [next(st.defend, di++), pi < 2 ? next(st.physical, pi++) : "ball-retention", null];
+    const target = nxt && nxt.day <= 6 ? info(nxt.day) : null;
+    const k = since(d);
+    const u = nxt?.k ?? 9;
+    const first = target?.rival === "superior" ? nextDefend : target?.rival === "inferior" ? nextAttack : (d % 2 === 0 ? nextAttack : nextDefend);
+    const second = first === nextDefend ? nextAttack : nextDefend;
+    if (nMatches >= 2) {
+      // Entre dos partidos: una sesión de la táctica, balón parado y descanso
+      day.sessions = [first(), "bp-rutinas", "fis-descanso"];
+      continue;
     }
+    if (k === 2 && u >= 3) {
+      // Pico de carga
+      day.sessions = [nextPhysical(), first(), nextNeed()];
+      continue;
+    }
+    if (u === 2) {
+      // Dos días antes: partido de práctica o jugadores de campo
+      const team = wk % 2 === 0 ? "prep-practica" : "gen-campo";
+      note(team, "dos días antes del partido: todo el equipo junto");
+      day.sessions = [team, first(), null];
+      continue;
+    }
+    day.sessions = [first(), second(), nextNeed()];
   }
-  if (noMatches && !opts.preseason) {
-    // Semana sin partidos (parón): desarrollo puro, un descanso el domingo
-    days[6].sessions = ["rest", null, null];
-    days[0].sessions = ["recovery", "match-review", null];
+  // Sin partido en toda la semana y sin pretemporada: un domingo de cohesión si hay fichajes
+  if (goal === "cohesion") {
+    const free = days.find((x) => !x.isMatch && x.sessions.includes(null) && !isMatch(x.day + 1));
+    if (free) { free.sessions[free.sessions.indexOf(null)] = "ext-cohesion"; note("ext-cohesion", WEEK_GOAL_LABEL.cohesion); }
   }
-  return days;
+  for (const day of days) day.load = day.sessions.reduce((a, s) => a + (s && s !== "match" ? sessionLoad(SESSION_BY_ID[s]) : 0), 0);
+  return { days, reasons: [...reasons.entries()].map(([id, why]) => ({ id, why })), warnings: weekWarnings(days, opts) };
+}
+
+/** Avisos de carga y calendario sobre una semana (también sirve si la editas a mano en el juego). */
+export function weekWarnings(days: DayPlan[], opts: Pick<WeekOptions, "matchDays" | "prevSunday" | "nextMonday">): string[] {
+  const out: string[] = [];
+  const ids = (d: DayPlan) => d.sessions.filter((s): s is string => !!s && s !== "match");
+  // Día intenso: lleva alguna sesión pesada (Rapidez, Aguante, Práctica de partido, Físico, Total…).
+  const intense = (d: DayPlan) => ids(d).some((x) => sessionLoad(SESSION_BY_ID[x]) >= 3);
+  for (const d of days) {
+    const s = ids(d);
+    if (s.includes("fis-rapidez") && s.includes("prep-practica")) out.push(`${DAY_LABEL[d.day]}: Rapidez y Práctica de partido el mismo día (las dos con riesgo de lesión enorme).`);
+    const nextIsMatch = d.day === 6 ? !!opts.nextMonday : days[d.day + 1]?.isMatch;
+    if (nextIsMatch && s.some((x) => ["fis-aguante", "fis-rapidez", "fis-resistencia", "gen-fisico", "prep-practica"].includes(x))) out.push(`${DAY_LABEL[d.day]}: carga física la víspera del partido.`);
+  }
+  for (let i = 0; i + 2 < days.length; i++) if (intense(days[i]) && intense(days[i + 1]) && intense(days[i + 2])) { out.push(`Tres días intensos seguidos (${DAY_LABEL[i]}-${DAY_LABEL[i + 2]}).`); break; }
+  for (let i = 0; i + 1 < days.length; i++) if (ids(days[i]).includes("fis-descanso") && ids(days[i + 1]).includes("fis-descanso")) out.push(`Dar descanso ${DAY_LABEL[i]} y ${DAY_LABEL[i + 1]}: dos días seguidos bajan mucho el ritmo competitivo.`);
+  if (opts.matchDays.length >= 2 && !days.some((d) => ids(d).includes("fis-recuperacion"))) out.push("Semana de dos partidos sin Recuperación.");
+  return out;
 }
 
 // ===========================================================================
-// Semana de los filiales (guías de jonasmorais y del megapack de Passion4FM)
+// Semana de los filiales
 // ===========================================================================
 
-/**
- * Temas de la semana juvenil. Passion4FM (modelo TIPS del Ajax) rota
- * 3 meses de general → 3 de técnica → 3 de inteligencia, con velocidad solo
- * en semanas sin partido por el riesgo de lesión. jonasmorais: en el Sub-18
- * cada día es de una categoría (no hacen falta previas ni análisis); el
- * Sub-21 mezcla días temáticos con preparación del partido.
- */
 export type YouthTheme = "general" | "tecnica" | "inteligencia" | "velocidad" | "fisico" | "equipo";
 export const YOUTH_THEME_LABEL: Record<YouthTheme, string> = {
   general: "General (3 meses al empezar)",
@@ -344,14 +458,13 @@ export const YOUTH_THEME_LABEL: Record<YouthTheme, string> = {
   equipo: "Cohesión (canteranos nuevos)",
 };
 
-/** Sesiones de cada tema, en orden de prioridad; se reparten dos por día. */
 const YOUTH_SESSIONS: Record<YouthTheme, string[]> = {
-  general: ["ball-retention", "att-movement", "def-shape", "quickness", "ball-distribution", "endurance", "chance-creation", "def-engaged"],
-  tecnica: ["ball-distribution", "ball-retention", "chance-creation", "chance-conversion", "att-patient", "att-wings", "goalkeeping", "sp-attacking"],
-  inteligencia: ["tactical", "att-shadow", "def-shadow", "def-shape", "att-movement", "teamwork", "def-front", "match-practice"],
-  velocidad: ["quickness", "att-movement", "transition-press", "quickness", "def-engaged", "endurance", "att-direct", "quickness"],
-  fisico: ["resistance", "endurance", "quickness", "physical", "resistance", "def-shape", "endurance", "att-movement"],
-  equipo: ["team-bonding", "teamwork", "match-practice", "att-movement", "def-shape", "team-bonding", "ball-retention", "teamwork"],
+  general: ["tec-retencion", "tac-atacar", "tac-defender", "fis-rapidez", "tec-distribucion", "fis-aguante", "tec-creacion", "def-posesion"],
+  tecnica: ["tec-distribucion", "tec-retencion", "tec-creacion", "tec-convertir", "att-paciente", "att-bandas", "gen-porteros", "bp-rutinas"],
+  inteligencia: ["gen-tactica", "tac-atacar", "tac-defender", "def-posesion", "att-paciente", "tec-trans-presionar", "def-arriba", "prep-practica"],
+  velocidad: ["fis-rapidez", "tac-atacar", "tec-trans-presionar", "fis-rapidez", "def-posesion", "fis-aguante", "att-directo", "fis-rapidez"],
+  fisico: ["fis-resistencia", "fis-aguante", "fis-rapidez", "gen-fisico", "fis-resistencia", "tac-defender", "fis-aguante", "tac-atacar"],
+  equipo: ["ext-cohesion", "gen-tactica", "prep-practica", "tac-atacar", "tac-defender", "ext-cohesion", "tec-retencion", "gen-campo"],
 };
 
 export interface YouthWeekOptions {
@@ -364,64 +477,34 @@ export interface YouthWeekOptions {
 export function buildYouthWeek(opts: YouthWeekOptions): DayPlan[] {
   const list = YOUTH_SESSIONS[opts.theme];
   const matchSet = new Set(opts.matchDays);
-  const days: DayPlan[] = Array.from({ length: 7 }, (_, d) => ({ day: d, isMatch: matchSet.has(d), sessions: [null, null, null] }));
-  const prevMatch = (d: number) => matchSet.has((d + 6) % 7);
-  const nextMatch = (d: number) => matchSet.has((d + 1) % 7);
+  const days: DayPlan[] = Array.from({ length: 7 }, (_, d) => ({ day: d, isMatch: matchSet.has(d), sessions: [null, null, null], load: 0 }));
   let i = 0;
   const next = () => list[i++ % list.length];
   for (const day of days) {
     if (day.isMatch) { day.sessions = ["match", null, null]; continue; }
-    if (prevMatch(day.day)) { day.sessions = ["recovery", opts.competitive ? "match-review" : next(), null]; continue; }
-    if (day.day === 6) { day.sessions = ["rest", null, null]; continue; }
-    if (nextMatch(day.day) && opts.competitive) { day.sessions = ["match-preview", next(), null]; continue; }
-    // Día temático: dos sesiones del tema y una tercera ligera en días alternos
-    day.sessions = [next(), next(), day.day % 2 === 0 ? "rest" : opts.theme === "velocidad" || opts.theme === "fisico" ? "recovery" : "teamwork"];
+    if (matchSet.has((day.day + 6) % 7)) { day.sessions = [opts.competitive ? "prep-revision" : next(), "fis-recuperacion", null]; continue; }
+    if (day.day === 6) { day.sessions = ["fis-descanso", null, null]; continue; }
+    if (matchSet.has((day.day + 1) % 7) && opts.competitive) { day.sessions = ["prep-tacticas", next(), "prep-enfoque"]; continue; }
+    day.sessions = [next(), next(), day.day % 2 === 0 ? "fis-descanso" : opts.theme === "velocidad" || opts.theme === "fisico" ? "fis-recuperacion" : "gen-tactica"];
   }
+  for (const day of days) day.load = day.sessions.reduce((a, s) => a + (s && s !== "match" ? sessionLoad(SESSION_BY_ID[s]) : 0), 0);
   return days;
 }
 
-/** Avisos sobre la configuración elegida. */
 export function youthWeekWarnings(opts: YouthWeekOptions): string[] {
   const out: string[] = [];
-  if (opts.theme === "velocidad" && opts.matchDays.length > 0) out.push("La semana de velocidad va en semanas sin partido: es la de más lesiones.");
+  if (opts.theme === "velocidad" && opts.matchDays.length > 0) out.push("La semana de velocidad va en semanas sin partido: Rapidez tiene riesgo de lesión enorme.");
   if (opts.matchDays.length >= 2) out.push("Dos partidos: quita la tercera sesión de los días temáticos si aparecen fatigados.");
-  if (!opts.competitive) out.push("Sub-18: sin previa ni análisis; con 15 minutos ya reciben nota, así que rota a todos.");
+  if (!opts.competitive) out.push("Sub-18: sin revisión ni tácticas de partido; con 15 minutos ya reciben nota, así que rota a todos.");
   return out;
 }
 
 // ===========================================================================
-// Charlas: elogios y críticas mensuales por rendimiento (guía de jonasmorais)
-// ===========================================================================
-
-export interface TalkSuggestion {
-  player: Player;
-  kind: "elogio" | "critica";
-  rating: number;
-  /** Aviso cuando la personalidad aconseja no criticar. */
-  caution?: string;
-}
-
-export function suggestTalks(players: Player[]): TalkSuggestion[] {
-  const out: TalkSuggestion[] = [];
-  for (const p of players) {
-    if (p.avgRating == null) continue;
-    if (p.avgRating >= 7.5) out.push({ player: p, kind: "elogio", rating: p.avgRating });
-    else if (p.avgRating <= 6.5) {
-      const tier = personalityTierLevel(p.personality);
-      const fragile = /confianza|desanima|agallas|temperamental|provocar|irascible|vol[aá]til/i.test(`${p.personality ?? ""} ${p.mediaHandling ?? ""}`);
-      out.push({ player: p, kind: "critica", rating: p.avgRating, caution: fragile ? "personalidad frágil: critica en privado o no critiques" : tier <= 1 ? "personalidad mala: puede reaccionar mal" : undefined });
-    }
-  }
-  return out.sort((a, b) => (a.kind === b.kind ? b.rating - a.rating : a.kind === "elogio" ? -1 : 1));
-}
-
-// ===========================================================================
-// Tutorías
+// Grupos de aprendizaje
 // ===========================================================================
 
 export type PersonalityTier = "buena" | "neutra" | "mala";
 
-/** Resumen en tres niveles a partir del catálogo de personalidades. */
 export function personalityTier(p: string | null): PersonalityTier {
   const t = personalityTierLevel(p);
   if (t >= 5) return "buena";
@@ -429,57 +512,59 @@ export function personalityTier(p: string | null): PersonalityTier {
   return "neutra";
 }
 
-export type Unit = "portero" | "defensa" | "medio" | "ataque";
-
-/** Unidad según la posición principal (la primera que lista el juego). */
-export function unitOf(p: Player): Unit {
-  if (p.isGoalkeeper) return "portero";
-  const x = p.position.slots[0];
-  if (!x) return "medio";
-  if (x === "ST" || x.startsWith("AM")) return "ataque";
-  if (x === "DM" || x.startsWith("M")) return "medio";
-  return "defensa";
+/** «Líder del equipo» o «Jugador muy influyente» en la columna Estructura. */
+export function isLeader(p: Player): boolean {
+  return /l[ií]der|muy influyente|team leader|highly influential/i.test(p.hierarchy ?? "");
 }
 
 export interface MentoringGroup {
   unit: Unit;
-  mentors: Player[];
+  mentor: Player;
   mentees: Player[];
-  /** Avisos sobre mentores que contagian algo indeseado. */
   notes: string[];
 }
 
-/**
- * Mentores: ≥24 años, personalidad buena (o mejor) y Determinación o Liderazgo
- * altos; se ordenan por nivel de personalidad y se proponen hasta tres por
- * unidad (la guía recomienda un grupo con un mentor por línea). Aprendices:
- * ≤23 años con personalidad no buena o determinación baja. Los ambiciosos se
- * marcan porque contagian lealtad baja además de ambición.
- */
-export function suggestMentoring(players: Player[], opts: { youth?: boolean } = {}): MentoringGroup[] {
-  const units: Unit[] = ["portero", "defensa", "medio", "ataque"];
-  // En un filial no hay veteranos: valen los mayores del grupo con buena personalidad.
-  const minAge = opts.youth ? 19 : 24;
-  return units
-    .map((unit) => {
-      const pool = players.filter((p) => unitOf(p) === unit);
-      const mentors = pool
-        .filter((p) => (p.age ?? 0) >= minAge && personalityTierLevel(p.personality) >= 5 && ((p.attrs.Det?.value ?? 0) >= (opts.youth ? 13 : 14) || (p.attrs.Ldr?.value ?? 0) >= (opts.youth ? 10 : 14)))
-        .sort((a, b) => personalityTierLevel(b.personality) - personalityTierLevel(a.personality) || (b.attrs.Ldr?.value ?? 0) + (b.attrs.Det?.value ?? 0) - (a.attrs.Ldr?.value ?? 0) - (a.attrs.Det?.value ?? 0))
-        .slice(0, 3);
-      const mentees = pool
-        .filter((p) => (p.age ?? 99) <= 23 && !mentors.includes(p) && (personalityTierLevel(p.personality) < 5 || (p.attrs.Det?.value ?? 0) < 12))
-        .sort((a, b) => personalityTierLevel(a.personality) - personalityTierLevel(b.personality) || (a.attrs.Det?.value ?? 0) - (b.attrs.Det?.value ?? 0));
-      const notes: string[] = [];
-      for (const m of pool.filter((p) => (p.age ?? 0) >= 24 && /ambicios|ambitious/i.test(p.personality ?? "") && !mentors.includes(p))) {
-        notes.push(`${m.name} (${m.personality}) no como mentor: contagia lealtad baja.`);
-      }
-      for (const m of mentors.filter((p) => /perfeccionista|perfectionist/i.test(p.personality ?? ""))) {
-        notes.push(`${m.name} es perfeccionista: buen mentor, pero puede pasar temperamento bajo.`);
-      }
-      return { unit, mentors, mentees, notes };
-    })
-    .filter((g) => g.mentees.length > 0);
+export interface MentoringResult {
+  groups: MentoringGroup[];
+  /** Jóvenes que necesitan grupo y no caben (faltan líderes en su línea). */
+  waiting: Player[];
+  /** true si se usó la columna Estructura de la exportación. */
+  usedHierarchy: boolean;
 }
 
-export const UNIT_LABEL: Record<Unit, string> = { portero: "Porteros", defensa: "Defensa", medio: "Medio campo", ataque: "Ataque" };
+/**
+ * Un líder (Líder del equipo o Muy influyente si la exportación trae
+ * Estructura; si no, veterano con buena personalidad y Determinación o
+ * Liderazgo altos) y 2-3 jóvenes como máximo de la misma unidad.
+ */
+export function suggestMentoring(players: Player[], opts: { youth?: boolean; maxMentees?: number } = {}): MentoringResult {
+  const max = opts.maxMentees ?? 3;
+  const usedHierarchy = players.some((p) => p.hierarchy);
+  const minAge = opts.youth ? 19 : 24;
+  const good = (p: Player) => personalityTierLevel(p.personality) >= 5;
+  const strong = (p: Player) => (p.attrs.Det?.value ?? 0) >= (opts.youth ? 13 : 14) || (p.attrs.Ldr?.value ?? 0) >= (opts.youth ? 10 : 14);
+  const isMentor = (p: Player) => (p.age ?? 0) >= minAge && good(p) && (usedHierarchy && !opts.youth ? isLeader(p) || strong(p) : strong(p)) && !/ambicios|ambitious/i.test(p.personality ?? "");
+  const groups: MentoringGroup[] = [];
+  const waiting: Player[] = [];
+  for (const unit of ["portero", "defensa", "ataque"] as Unit[]) {
+    const pool = players.filter((p) => unitOf(p) === unit);
+    const mentors = pool.filter(isMentor).sort((a, b) =>
+      Number(isLeader(b)) - Number(isLeader(a)) || personalityTierLevel(b.personality) - personalityTierLevel(a.personality) ||
+      (b.attrs.Ldr?.value ?? 0) + (b.attrs.Det?.value ?? 0) - (a.attrs.Ldr?.value ?? 0) - (a.attrs.Det?.value ?? 0));
+    const mentees = pool
+      .filter((p) => (p.age ?? 99) <= 23 && !mentors.includes(p) && (personalityTierLevel(p.personality) < 5 || (p.attrs.Det?.value ?? 0) < 12))
+      .sort((a, b) => personalityTierLevel(a.personality) - personalityTierLevel(b.personality) || (a.attrs.Det?.value ?? 0) - (b.attrs.Det?.value ?? 0));
+    let i = 0;
+    for (const m of mentors) {
+      if (i >= mentees.length) break;
+      const take = mentees.slice(i, i + max);
+      i += take.length;
+      const notes: string[] = [];
+      if (/perfeccionista|perfectionist/i.test(m.personality ?? "")) notes.push(`${m.name} es perfeccionista: buen tutor, pero puede pasar temperamento bajo.`);
+      if (usedHierarchy && !isLeader(m)) notes.push(`${m.name} no es líder ni muy influyente: su influencia en el grupo será ligera.`);
+      groups.push({ unit, mentor: m, mentees: take, notes });
+    }
+    waiting.push(...mentees.slice(i));
+  }
+  return { groups, waiting, usedHierarchy };
+}

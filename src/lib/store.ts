@@ -7,6 +7,7 @@ import type { ImportSource, Player, Squad } from "./fm/types";
 import type { Tactic } from "./fm/tactics";
 import { migrateInstructions } from "./fm/instructions";
 import { appendSnapshots, type History } from "./fm/history";
+import type { TrainingWeekSettings } from "./fm/training";
 
 /** Almacenamiento en IndexedDB (mucha más capacidad que localStorage). */
 const idbStorage: StateStorage = {
@@ -55,7 +56,7 @@ interface AppState {
   /** uid → ids de rasgos que tiene el jugador (entrada manual). */
   playerTraits: Record<string, string[]>;
   /** Opciones del calendario semanal de entrenamiento. */
-  trainingWeek: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number; youthTheme?: string };
+  trainingWeek: TrainingWeekSettings;
   /** Presupuestos de fichajes: traspaso total y sueldo máximo por jugador (mismas unidades que la exportación). */
   scoutingBudget: { transfer: number | null; wage: number | null };
   /** Fotos de atributos por UID en cada importación (evolución). */
@@ -78,7 +79,7 @@ interface AppState {
   removeTactic: (id: string) => void;
   setActiveTactic: (id: string | null) => void;
   setPlayerTraits: (uid: string, traitIds: string[]) => void;
-  setTrainingWeek: (w: { matchDays: number[]; preseason: boolean; goal?: string; weekIndex?: number; youthTheme?: string }) => void;
+  setTrainingWeek: (w: TrainingWeekSettings) => void;
   setScoutingBudget: (b: { transfer: number | null; wage: number | null }) => void;
   setTarget: (uid: string, entry: TargetEntry | null) => void;
   setLeagueSize: (n: number) => void;

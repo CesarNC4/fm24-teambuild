@@ -22,7 +22,7 @@ type FieldKey =
   | "playingStyle" | "learningTrait" | "pros" | "cons"
   | "birthDate" | "contractStart" | "releaseClause" | "contractType" | "contractKind"
   | "transferStatus" | "loanStatus" | "coachRating" | "abilityRating" | "potentialRating"
-  | "apps" | "starts" | "minutes" | "minsPerApp" | "goals" | "assists" | "xg" | "xa" | "morale" | "condition" | "info";
+  | "apps" | "starts" | "minutes" | "minsPerApp" | "goals" | "assists" | "xg" | "xa" | "morale" | "condition" | "info" | "hierarchy" | "socialGroup";
 
 const FIELD_ALIASES: Record<FieldKey, string[]> = {
   name: ["Name", "Nombre"],
@@ -68,6 +68,8 @@ const FIELD_ALIASES: Record<FieldKey, string[]> = {
   morale: ["Moral", "Morale"],
   condition: ["CON", "Condición", "Condition"],
   info: ["Inf", "Info"],
+  hierarchy: ["Estructura", "Jerarquía", "Hierarchy", "Team Hierarchy"],
+  socialGroup: ["Grupos sociales", "Grupo social", "Social Group", "Social Groups"],
 };
 
 /**
@@ -423,6 +425,8 @@ export function parseFmHtml(html: string, overrides: Record<string, string | nul
       morale: cleanNone(fields.morale),
       condition: cleanNone(fields.condition),
       info: cleanNone(fields.info),
+      hierarchy: cleanNone(fields.hierarchy),
+      socialGroup: cleanNone(fields.socialGroup),
       attrs,
       extra,
       isGoalkeeper,

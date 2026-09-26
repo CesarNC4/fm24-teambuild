@@ -84,6 +84,10 @@ export interface Player {
   condition: string | null;
   /** Columna "Inf" del juego: Les, Juv, Int, Per… */
   info: string | null;
+  /** Columna «Estructura» (vista de plantilla): Líder del equipo, Jugador muy influyente, Jugador influyente, Otros jugadores. */
+  hierarchy?: string | null;
+  /** Columna «Grupos sociales»: principal, secundario A/B, Otros. */
+  socialGroup?: string | null;
   attrs: Attrs;
   /** Columnas de la exportación que no se reconocieron, por si se quieren mostrar. */
   extra: Record<string, string>;
