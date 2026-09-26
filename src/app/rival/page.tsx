@@ -13,6 +13,7 @@ import { lineupForPool, type Tactic } from "@/lib/fm/tactics";
 import { useAppStore } from "@/lib/store";
 import { coverageText, useLeague } from "@/lib/useLeague";
 import { ScoreBadge } from "@/components/AttrCell";
+import { ClubComparison } from "@/components/ClubComparison";
 
 function edgeTone(e: number | null): string {
   if (e == null) return "text-muted";
@@ -343,6 +344,8 @@ export default function RivalPage() {
         </div>
         <p className="text-xs text-muted">Encaje: media de los atributos clave del estilo en tu XI (como en Táctica). Rival: puntos que suma o resta lo que el rival hace bien o mal contra ese estilo.</p>
       </section>
+
+      <ClubComparison />
     </div>
   );
 }

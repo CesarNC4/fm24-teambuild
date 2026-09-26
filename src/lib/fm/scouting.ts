@@ -60,6 +60,14 @@ export interface NeedsOptions {
   league?: LeagueStats | null;
 }
 
+/** Relevo en casa: el mejor juvenil que domina el puesto. */
+export function bestYouth(youthPool: Player[], slot: PositionSlot, role: RoleDef): { player: Player; effective: number } | undefined {
+  return youthPool
+    .filter((p) => p.isGoalkeeper === (slot === "GK") && familiarity(p, slot) >= 0.85)
+    .map((p) => ({ player: p, effective: scoreRole(p, role).score * familiarity(p, slot) }))
+    .sort((a, b) => b.effective - a.effective)[0];
+}
+
 /** Necesidades del primer equipo por hueco de la táctica. */
 export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number | null, opts: NeedsOptions = {}): { lineup: LineupResult; needs: SquadNeed[] } {
   const lineup = buildLineup(tactic, firstTeam);
@@ -81,11 +89,7 @@ export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number
     // Eslabón débil del estilo (plan por hueco): los atributos que el estilo pide a su línea, lejos
     const styleNeed = plan.plans.find((x) => x.slotId === s.slot.id)?.needs.find((x) => x.fn === "estilo" && x.can === "no");
     const weakLink = styleNeed ? `${styleNeed.label}: ${styleNeed.checks.filter((c) => !c.ok).map((c) => `${c.label} ${c.value ?? "?"}`).join(", ")} (pide ${styleNeed.checks[0]?.req.min ?? 12})` : undefined;
-    // Relevo en casa: el mejor juvenil que domina el puesto
-    const youth = youthPool
-      .filter((p) => p.isGoalkeeper === (s.slot.slot === "GK") && familiarity(p, s.slot.slot) >= 0.85)
-      .map((p) => ({ player: p, effective: scoreRole(p, s.role).score * familiarity(p, s.slot.slot) }))
-      .sort((a, b) => b.effective - a.effective)[0];
+    const youth = bestYouth(youthPool, s.slot.slot, s.role);
     const leaguePct = opts.league && s.starter ? leagueLevelPercentile(opts.league, s.starter.player) : null;
 
     if (!s.starter) { level = "urgente"; reasons.push("Sin nadie para el hueco."); }
