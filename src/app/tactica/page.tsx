@@ -8,7 +8,7 @@ import { tacticAdvice } from "@/lib/fm/advice";
 import { rankStyles, UNIT_SHORT } from "@/lib/fm/styles";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
 import { buildLineup, newTactic, poolPlayers, rankFormations, tacticWarnings, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
-import { strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
+import { roleDefaultNames, roleTraitClashes, strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
 import { recommendRoles, recommendedRoleIds } from "@/lib/fm/styleRoles";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -565,12 +565,14 @@ export default function TacticPage() {
         <section className="space-y-2">
           <h2 className="text-lg font-semibold">Instrucciones individuales sugeridas</h2>
           <p className="text-xs text-muted">
-            Por titular, según rol, estilo, atributos, pie fuerte y rasgos registrados. ●●● muy recomendable · ●●○ recomendable · ●○○ opcional.
+            Por titular, según rol, estilo, atributos, pie fuerte y rasgos registrados. Nunca propone una instrucción que el rol ya trae de serie ni una que el juego no deja poner. ●●● muy recomendable · ●●○ recomendable · ●○○ opcional.
             <span className="text-attr-good"> ✓ rasgo</span> = ya lo hace por un rasgo (no hace falta darla); <span className="text-attr-low">✗ rasgo</span> = un rasgo suyo la contradice.
           </p>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
             {lineup.slots.map((s) => {
               const sug = piBySlot.get(s.slot.id) ?? [];
+              const def = roleDefaultNames(s.role, s.slot.slot);
+              const clashes = s.starter ? roleTraitClashes(s.role, s.slot.slot, playerTraits[s.starter.player.uid] ?? []) : [];
               return (
                 <div key={s.slot.id} className="bg-surface border border-border rounded-lg p-2.5 text-xs">
                   <div className="flex items-baseline gap-2 mb-1">
@@ -578,6 +580,12 @@ export default function TacticPage() {
                     <span className="font-medium">{s.starter?.player.name ?? "—"}</span>
                     <span className="text-muted">{s.role.es} ({DUTY_LABEL[s.role.duty]})</span>
                   </div>
+                  <div className="text-muted mb-1" title={def.blocked.length ? `No se pueden poner: ${def.blocked.join(", ")}` : undefined}>
+                    De serie: {def.part.length ? def.part.join(", ") : "ninguna"}
+                  </div>
+                  {clashes.map((c) => (
+                    <div key={c.trait.id} className="text-attr-low">✗ Rasgo «{c.trait.es}» va contra «{c.pi.es}», que el rol trae de serie</div>
+                  ))}
                   {sug.length === 0 && <div className="text-muted">Sin sugerencias: las del rol bastan.</div>}
                   <ul className="space-y-0.5">
                     {sug.map((x) => (

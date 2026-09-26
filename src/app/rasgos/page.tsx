@@ -6,7 +6,7 @@ import { ATTR_BY_KEY } from "@/lib/fm/attributes";
 import { ROLES, ROLE_BY_ID, roleLabel, type RoleDef } from "@/lib/fm/roles";
 import { bestRoles } from "@/lib/fm/scoring";
 import { buildLineup } from "@/lib/fm/tactics";
-import { TRAIT_BY_ID, TRAIT_CATEGORY_LABEL, assessTrait, hasPoorWeakerFoot, reviewCurrentTraits, suggestTraits, traitsAvailableFor, traitsConflict, type TraitCategory, type TraitDef } from "@/lib/fm/traits";
+import { TRAIT_CATEGORY_LABEL, findTrait, assessTrait, hasPoorWeakerFoot, reviewCurrentTraits, suggestTraits, traitsAvailableFor, traitsConflict, type TraitCategory, type TraitDef } from "@/lib/fm/traits";
 import { normalizeHeader } from "@/lib/fm/attributes";
 import type { Player } from "@/lib/fm/types";
 import { useAppStore } from "@/lib/store";
@@ -19,11 +19,9 @@ const VERDICT_CLASS = {
 
 const CATEGORIES: TraitCategory[] = ["movimiento", "pase", "tiro", "defensa", "tecnica", "portero", "personalidad"];
 
-/** Busca el rasgo por nombre en español (para "rasgo en aprendizaje" del export). */
+/** Busca el rasgo por nombre del juego (para "rasgo en aprendizaje" del export). */
 function findTraitByName(name: string | null): TraitDef | null {
-  if (!name) return null;
-  const n = normalizeHeader(name);
-  return Object.values(TRAIT_BY_ID).find((t) => normalizeHeader(t.es) === n || normalizeHeader(t.en) === n) ?? null;
+  return name ? findTrait(name) : null;
 }
 
 export default function TraitsPage() {
@@ -94,7 +92,7 @@ export default function TraitsPage() {
 
   const available = sel ? traitsAvailableFor(sel.p.isGoalkeeper) : [];
   const q = normalizeHeader(query);
-  const filtered = available.filter((t) => !sel?.ids.includes(t.id) && (!q || normalizeHeader(t.es).includes(q) || normalizeHeader(t.en).includes(q)));
+  const filtered = available.filter((t) => !sel?.ids.includes(t.id) && (!q || [t.es, t.en, t.old ?? "", ...(t.aliases ?? [])].some((n) => normalizeHeader(n).includes(q))));
 
   return (
     <div className="space-y-4">
@@ -185,7 +183,7 @@ export default function TraitsPage() {
                           className="w-full text-left text-xs px-2 py-1 hover:bg-surface-2 flex justify-between gap-2"
                           onClick={() => { addTrait(sel.p.uid, t.id); setQuery(""); }}
                         >
-                          <span>{t.es} <span className="text-muted">· {t.en}{t.mentoringOnly ? " · solo tutoría" : ""}</span></span>
+                          <span>{t.es}{t.aliases?.length ? ` / ${t.aliases.join(" / ")}` : ""} <span className="text-muted">· {t.en}{t.mentoringOnly ? " · solo tutoría" : ""}{t.notInFocus ? " · no está en el foco de contratación" : ""}</span></span>
                           {conflict && <span className="text-attr-low">incompatible con uno actual</span>}
                         </button>
                       );

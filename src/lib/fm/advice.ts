@@ -32,7 +32,7 @@ const FLANK_SLOTS: Record<"L" | "R", PositionSlot[]> = {
 const AGGRESSIVE_FORMATIONS = new Set(["4-2-3-1-dm", "4-2-3-1-mc", "4-3-3-dm", "4-3-3-flat", "4-2-4", "3-4-3", "4-2-2-2", "3-4-2-1"]);
 const DEFENSIVE_FORMATIONS = new Set(["4-1-4-1", "4-4-2", "5-3-2", "5-2-3", "4-1-2-1-2", "3-5-2", "4-4-1-1"]);
 /** Roles con la presión cableada (no se puede quitar): en bloque bajo rompen la línea. */
-const HARDWIRED_PRESS: Record<string, string> = { PF: "Delantero presionante", DW: "Extremo defensivo", BWM: "Recuperador" };
+const HARDWIRED_PRESS: Record<string, string> = { PF: "Delantero presionante", DW: "Extremo defensivo", BWM: "Centrocampista recuperador" };
 
 function mean(slots: SlotResult[], keys: AttrKey[]): number | null {
   const vals: number[] = [];
@@ -94,7 +94,7 @@ export function restDefence(lineup: LineupResult): RestDefence {
   else if (ifbs.length >= 2) wedge = "dos laterales invertidos: salida 3-2 con el pivote";
   else if (ifbs.length === 1 && attackingBacks.length === 1) wedge = "cuña asimétrica: un lateral invertido cierra y el otro sube";
   const hb = [...dms, ...mcs].find((x) => x.role.code === "HB");
-  if (hb && attackingBacks.length >= 2) issues.push(`Medio escoba (${name(hb)}) con los dos laterales subiendo: al bajar entre los centrales los abre y el eje queda vacío en la transición. Funciona si un lateral cierra (invertido o en defender).`);
+  if (hb && attackingBacks.length >= 2) issues.push(`Medio cierre (${name(hb)}) con los dos laterales subiendo: al bajar entre los centrales los abre y el eje queda vacío en la transición. Funciona si un lateral cierra (invertido o en defender).`);
   const rpm = dms.find((x) => x.role.code === "RPM");
   if (rpm) issues.push(`Organizador móvil en la base (${name(rpm)}): abandona el centro y nadie cubre delante de los centrales.`);
   if (cbs.length <= 2 && attackingBacks.length >= 2 && !dms.some((x) => x.role.duty === "D")) issues.push("Los dos laterales en ataque sin tres centrales ni pivote en defender: 2 contra 3 en cada contra.");
@@ -141,7 +141,7 @@ export function tacticAdvice(tactic: Tactic, lineup: LineupResult): Advice[] {
   if (wideSystem && (dmDefend || back3)) wideVotes.push("buena cobertura central (MCD en defender o tres centrales) para aguantar contras");
   if (wideSystem && finisherST) wideVotes.push("tus delanteros son rematadores: necesitan espacio");
   if (wideSystem && backsStayHome) wideVotes.push("los laterales no suben: protegen de las contras");
-  if (wideSystem && mezCar >= 2) narrowVotes.push("dos mezzala/carrilero interior se alejan de la portería: el juego estrecho los acerca");
+  if (wideSystem && mezCar >= 2) narrowVotes.push("dos mezzala/interior mixto se alejan de la portería: el juego estrecho los acerca");
   if (wideSystem && dmSupport) narrowVotes.push("MCD en apoyo: poca cobertura ante contras, el juego estrecho protege");
   if (wideSystem && backsOverlap) narrowVotes.push("laterales que doblan: los extremos entran al área y dejan la banda al lateral");
   // Si el estilo fija la amplitud a propósito (juego de posición estrecho, Conte muy amplio), no se discute
@@ -285,19 +285,19 @@ export function tacticAdvice(tactic: Tactic, lineup: LineupResult): Advice[] {
     if (type && !tactic.instructions.some((i) => INSTRUCTION_BY_ID[i]?.group === "gk-tipo")) {
       out.push({ level: "tip", text: `${gkName}: ${why} → ${name(type)}.`, apply: type });
     }
-    if (ecc >= 13) out.push({ level: "info", text: `${gkName} tiene Excentricidad ${ecc}: tiende a salidas y regates arriesgados. Evita Portero líbero en ataque y la distribución rápida arriesgada.` });
+    if (ecc >= 13) out.push({ level: "info", text: `${gkName} tiene Excentricidad ${ecc}: tiende a salidas y regates arriesgados. Evita Portero cierre en ataque y la distribución rápida arriesgada.` });
     const deepPlaymaker = dm.find((s) => ["DLP", "REG", "HB"].includes(role(s).code));
     const fastStrikers = strikers.some((s) => attr(s, "Acc") >= 15 && attr(s, "Pac") >= 15);
     const possession = styleTraits(style).possession;
     const hasDest = tactic.instructions.some((i) => INSTRUCTION_BY_ID[i]?.group === "gk-destino");
     if (!hasDest) {
-      if (hasTarget && (kic >= 12 || thr >= 12)) out.push({ level: "tip", text: "Tienes un Delantero referencia: distribuir al delantero objetivo salta el medio campo y llega al último tercio rápido. Si el rival pone otro cabeceador, deja de funcionar.", apply: "gk-al-referencia" });
+      if (hasTarget && (kic >= 12 || thr >= 12)) out.push({ level: "tip", text: "Tienes un Delantero objetivo: distribuir al delantero objetivo salta el medio campo y llega al último tercio rápido. Si el rival pone otro cabeceador, deja de funcionar.", apply: "gk-al-referencia" });
       else if (fastStrikers && kic >= 15 && styleTraits(style).counter && !possession) out.push({ level: "tip", text: `Delantero muy rápido y ${gkName} con Saque de puerta ${kic}: distribuir por encima de la defensa castiga líneas altas.`, apply: "gk-por-encima" });
       else if (possession && mean(cbs, ["Pas", "Fir", "Cmp"])! >= 12) out.push({ level: "tip", text: "Estilo de posesión con centrales que saben jugar: distribuir a los centrales.", apply: "gk-a-defensas" });
       else if (deepPlaymaker && attr(deepPlaymaker, "Fir") >= 13 && attr(deepPlaymaker, "Cmp") >= 13) out.push({ level: "tip", text: `${deepPlaymaker.starter!.player.name} es el organizador más retrasado: distribuir al organizador da una salida menos arriesgada (cuidado si le marcan al hombre).`, apply: "gk-al-organizador" });
     }
   }
-  if (on("gk-al-referencia") && !hasTarget) out.push({ level: "warn", text: "Distribuir al delantero objetivo sin Delantero referencia en el XI: el saque largo cae en tierra de nadie (matriz de DarkHorse: distribución larga exige referencia).", remove: "gk-al-referencia" });
+  if (on("gk-al-referencia") && !hasTarget) out.push({ level: "warn", text: "Distribuir al delantero objetivo sin Delantero objetivo en el XI: el saque largo cae en tierra de nadie (matriz de DarkHorse: distribución larga exige referencia).", remove: "gk-al-referencia" });
   if (on("gk-saque-largo") && !hasTarget && strikers.every((s) => attr(s, "Hea") + attr(s, "Jum") < 26)) out.push({ level: "info", text: "Chutar en largo sin nadie que gane el duelo aéreo arriba: regalas la segunda jugada." });
 
   // ---- Tipo de centro
@@ -322,7 +322,7 @@ export function tacticAdvice(tactic: Tactic, lineup: LineupResult): Advice[] {
   }
   const tempoBrain = mean(field, ["Dec", "Fir"]);
   if (prof.ritmo === 2 && tempoBrain != null && tempoBrain < 13) out.push({ level: "warn", text: `Ritmo mucho más alto con Decisiones/Primer toque media ${tempoBrain.toFixed(1)}: el equipo regala balones (matriz de DarkHorse: ritmo × calidad de decisión). Ritmo más alto a secas.`, remove: "ritmo-mucho-mas-alto" });
-  if (on("salir-jugando")) out.push({ level: "info", text: "Salir jugando desde la defensa: el medio campo baja a ayudar en la salida; el equipo tarda más en llegar arriba. En FM puede acabar en pelotazo por frustración (04texag): Central con salida + ritmo bajo + pase corto hacen lo mismo con menos riesgo." });
+  if (on("salir-jugando")) out.push({ level: "info", text: "Salir jugando desde la defensa: el medio campo baja a ayudar en la salida; el equipo tarda más en llegar arriba. En FM puede acabar en pelotazo por frustración (04texag): Defensa con toque + ritmo bajo + pase corto hacen lo mismo con menos riesgo." });
   if (on("trabajar-area") && on("centros-tempranos")) out.push({ level: "warn", text: "Llevar el balón hasta el área y centros rápidos se contradicen (paciencia vs. centrar cuanto antes).", remove: "centros-tempranos" });
   if (on("tirar-minima") && on("trabajar-area")) out.push({ level: "warn", text: "Disparar cuando se pueda y llevar el balón hasta el área se contradicen.", remove: "tirar-minima" });
   if (on("perder-tiempo-mucho") && prof.ritmo > 0) out.push({ level: "info", text: "Perder tiempo con frecuencia y ritmo alto: el equipo pisa el balón y luego corre. Solo tiene sentido como cebo (De Zerbi) con ritmo bajo." });

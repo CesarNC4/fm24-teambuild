@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { ATTR_BY_KEY } from "@/lib/fm/attributes";
 import { DUTY_LABEL, POSITION_LABEL, POSITION_ORDER, rolesForPosition, type RoleDef } from "@/lib/fm/roles";
 import { scoreRole } from "@/lib/fm/scoring";
+import { roleDefaultNames } from "@/lib/fm/playerInstructions";
+import { MENTALITIES, PRESS_LABEL, roleDefaults } from "@/lib/fm/roleInstructions";
 import type { PositionSlot } from "@/lib/fm/types";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -104,7 +106,7 @@ export default function RolesPage() {
             <>
               <div>
                 <div className="font-semibold">{detail.es} ({DUTY_LABEL[detail.duty]})</div>
-                <div className="text-xs text-muted">{detail.en} · {detail.id}</div>
+                <div className="text-xs text-muted">{detail.en} · {detail.id}{detail.old ? ` · antes «${detail.old}»` : ""}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-attr-good mb-1">Clave</div>
@@ -118,6 +120,16 @@ export default function RolesPage() {
                   {detail.pref.map((k) => <span key={k} className="px-1.5 py-0.5 rounded bg-surface-2 text-xs">{ATTR_BY_KEY[k].es}</span>)}
                 </div>
               </div>
+              {detail.watch.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium mb-1">Además vigilamos</div>
+                  <div className="flex flex-wrap gap-1">
+                    {detail.watch.map((k) => <span key={k} className="px-1.5 py-0.5 rounded border border-border text-xs">{ATTR_BY_KEY[k].es}</span>)}
+                  </div>
+                  <div className="text-xs text-muted mt-1">El juego no lo resalta, pero lo tenemos en cuenta (cuenta como preferible).</div>
+                </div>
+              )}
+              <RoleDefaultsBox role={detail} slot={slot} />
             </>
           ) : (
             <div className="text-xs text-muted space-y-2">
@@ -132,6 +144,22 @@ export default function RolesPage() {
           )}
         </aside>
       </div>
+    </div>
+  );
+}
+
+function RoleDefaultsBox({ role, slot }: { role: RoleDef; slot: PositionSlot }) {
+  const def = roleDefaults(role.id, slot);
+  if (!def) return null;
+  const names = roleDefaultNames(role, slot);
+  return (
+    <div className="text-xs space-y-1 border-t border-border pt-2">
+      <div className="font-medium">De serie en el juego</div>
+      <div><span className="text-muted">Mentalidad:</span> {MENTALITIES[def.mentality]} <span className="text-muted">(con la del equipo de las capturas; sube o baja con ella)</span></div>
+      {def.press && <div className="text-muted">{PRESS_LABEL[def.press]}</div>}
+      <div><span className="text-muted">Parte del rol:</span> {names.part.length ? names.part.join(", ") : "ninguna"}</div>
+      <div><span className="text-muted">No se pueden poner:</span> {names.blocked.length ? names.blocked.join(", ") : "ninguna"}</div>
+      {def.note && <div className="text-muted">{def.note}</div>}
     </div>
   );
 }

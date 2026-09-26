@@ -51,7 +51,7 @@ export interface FocusRecommendation {
 function targetFor(role: RoleDef, key: AttrKey): { target: number; weight: number } | null {
   if (UNTRAINABLE.includes(key)) return null;
   if (role.key.includes(key)) return { target: 15, weight: 2 };
-  if (role.pref.includes(key)) return { target: 13, weight: 1 };
+  if (role.pref.includes(key) || role.watch.includes(key)) return { target: 13, weight: 1 };
   return null;
 }
 
@@ -216,7 +216,7 @@ export function needSessions(lineup: LineupResult | null): NeedSession[] {
     const p = s.starter?.player;
     if (!p) continue;
     const unit = unitOfSlot(s.slot.slot);
-    for (const key of [...s.role.key, ...s.role.pref]) {
+    for (const key of [...s.role.key, ...s.role.pref, ...s.role.watch]) {
       const t = targetFor(s.role, key);
       const v = p.attrs[key]?.value;
       if (!t || v == null) continue;

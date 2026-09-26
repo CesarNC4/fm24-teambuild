@@ -4,7 +4,8 @@
  * score = Σ w_i · v_i / (20 · Σ w_i) · 100
  *
  * donde w_i combina:
- *   - peso por rol: clave (verde) ×KEY_W, preferible (azul) ×PREF_W
+ *   - peso por rol: clave (verde) ×KEY_W, preferible (azul) ×PREF_W; los
+ *     «además vigilamos» (watch) cuentan como preferibles
  *   - peso "meta": atributos que pesan en el motor de partidos con
  *     independencia del rol (velocidad, aceleración, agilidad, salto…),
  *     siguiendo el consenso de la comunidad.
@@ -59,7 +60,7 @@ function weightsFor(role: RoleDef, cfg: ScoringConfig): Map<AttrKey, number> {
   const meta = isGk ? cfg.metaGk : cfg.meta;
   for (const [k, v] of Object.entries(meta) as [AttrKey, number][]) w.set(k, v);
   for (const k of role.key) w.set(k, (w.get(k) ?? 0) + cfg.keyWeight);
-  for (const k of role.pref) w.set(k, (w.get(k) ?? 0) + cfg.prefWeight);
+  for (const k of [...role.pref, ...role.watch]) w.set(k, (w.get(k) ?? 0) + cfg.prefWeight);
   return w;
 }
 

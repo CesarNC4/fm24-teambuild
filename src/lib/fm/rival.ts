@@ -109,7 +109,7 @@ export function rivalThreats(rl: RivalLineup): Threat[] {
     const p = s.player;
     const unit = unitOfSlot(s.slot);
     const vel = avg(p, ["Pac", "Acc"]);
-    if (unit === "att" && vel >= 15.5) out.push({ player: p, slot: s.slot, kind: "velocidad", detail: `Vel ${a(p, "Pac")} · Ace ${a(p, "Acc")}`, answer: "Línea defensiva no muy alta y sin trampa del fuera de juego; el central de cobertura le vigila." });
+    if (unit === "att" && vel >= 15.5) out.push({ player: p, slot: s.slot, kind: "velocidad", detail: `Vel ${a(p, "Pac")} · Ace ${a(p, "Acc")}`, answer: "Línea defensiva no muy alta y sin trampa del fuera de juego; el central en Cubrir le vigila." });
     const aer = a(p, "Hea") * 0.5 + a(p, "Jum") * 0.5;
     if (aer >= 15 && (unit === "att" || a(p, "Jum") >= 16)) out.push({ player: p, slot: s.slot, kind: "aereo", detail: `Cab ${a(p, "Hea")} · Sal ${a(p, "Jum")} · ${p.height ? `${p.height} cm` : "altura ?"}`, answer: "Asígnale tu mejor marcador aéreo en córners y faltas; anchura defensiva amplia para cortar los centros en origen." });
     if (unit !== "def" && avg(p, ["Vis", "Pas", "Tec"]) >= 15 && a(p, "Dec") >= 13) out.push({ player: p, slot: s.slot, kind: "organizador", detail: `Vis ${a(p, "Vis")} · Pas ${a(p, "Pas")} · Tec ${a(p, "Tec")}`, answer: "Presión inmediata cuando reciba: que no levante la cabeza." });
@@ -281,7 +281,7 @@ export function rivalWeaknesses(rl: RivalLineup, ours: LineupResult | null): Riv
         tweak("pasar-espacio", "tus delanteros les ganan la carrera", "clave"),
         tweak("ritmo-alto", "no dejes que se reorganicen", "util", ["ritmo-bajo"]),
         tweak("contraatacar", "cada recuperación es una carrera ganada", "util", ["mantener-forma"]),
-        tweak(null, "delantero Avanzado o Cazagoles en ataque, sin bajar a recibir", "util", undefined, "Rol: punta rápido"),
+        tweak(null, "Delantero avanzado o Ariete en ataque, sin bajar a recibir", "util", undefined, "Rol: punta rápido"),
       ],
     });
   }
@@ -331,7 +331,7 @@ export function rivalWeaknesses(rl: RivalLineup, ours: LineupResult | null): Riv
       tweaks: [
         tweak("linea-def-baja", "sin espacio a la espalda no hay carrera", "clave", ["linea-def-alta", "linea-def-mucho-mas-alta", "adelantarse-mas"]),
         tweak("retroceder-mas", "la línea cede metros antes de que arranquen", "util", ["adelantarse-mas"]),
-        tweak(null, "un central en cobertura y el lateral del lado de su extremo rápido en defender", "util", undefined, "Rol: central de cobertura"),
+        tweak(null, "un central en Cubrir y el lateral del lado de su extremo rápido en defender", "util", undefined, "Rol: central en Cubrir"),
       ],
     });
   } else if (r.attSpeed != null && r.attSpeed <= 12.5 && ourDefSpeed != null && ourDefSpeed >= 13) {

@@ -15,11 +15,12 @@ import type { RoleDef } from "./roles";
 import { TRAIT_BY_ID, type TraitDef } from "./traits";
 import type { Player, PositionSlot } from "./types";
 import { STYLE_BY_ID, styleTraits } from "./instructions";
+import { roleDefaults } from "./roleInstructions";
 
 export type PIGroup =
   | "movimiento" | "anchura" | "canales" | "libertad" | "aguantar"
   | "tiro" | "regate" | "conduccion" | "longitud-pase" | "riesgo-pase"
-  | "centro-cuando" | "centro-donde" | "presion" | "entradas" | "marcaje" | "gk-distribucion";
+  | "centro-cuando" | "centro-desde" | "centro-donde" | "presion" | "entradas" | "marcaje" | "gk-distribucion";
 
 export interface PlayerInstruction {
   id: string;
@@ -35,7 +36,7 @@ export const PLAYER_INSTRUCTIONS: PlayerInstruction[] = [
   { id: "get-further-forward", es: "Subir más", en: "Get Further Forward", group: "movimiento", attrs: ["OtB", "Sta", "Wor"] },
   { id: "hold-position", es: "Mantener posición", en: "Hold Position", group: "movimiento", attrs: ["Pos", "Cnt"] },
   { id: "stay-wider", es: "Abrirse a banda", en: "Stay Wider", group: "anchura", attrs: ["Cro", "OtB"] },
-  { id: "sit-narrower", es: "Cerrarse", en: "Sit Narrower", group: "anchura", attrs: ["OtB", "Tea"] },
+  { id: "sit-narrower", es: "Situarse más cerrado", en: "Sit Narrower", group: "anchura", attrs: ["OtB", "Tea"] },
   { id: "move-into-channels", es: "Moverse entre líneas", en: "Move Into Channels", group: "canales", attrs: ["OtB", "Acc", "Ant", "Dec"] },
   { id: "roam", es: "Variar la posición", en: "Roam From Position", group: "libertad", attrs: ["Fla", "Pos", "Dec"] },
   // Posesión
@@ -53,6 +54,8 @@ export const PLAYER_INSTRUCTIONS: PlayerInstruction[] = [
   { id: "fewer-risky-passes", es: "Tomar menos riesgos", en: "Fewer Risky Passes", group: "riesgo-pase", attrs: ["Dec", "Pas"] },
   { id: "cross-more", es: "Centrar más a menudo", en: "Cross More Often", group: "centro-cuando", attrs: ["Cro", "Tec", "Ant"] },
   { id: "cross-less", es: "Centrar menos a menudo", en: "Cross Less Often", group: "centro-cuando", attrs: ["Pas", "Dec"] },
+  { id: "cross-from-deep", es: "Centrar desde atrás", en: "Cross From Deep", group: "centro-desde", attrs: ["Cro", "Vis"] },
+  { id: "cross-from-byline", es: "Centrar desde la cal", en: "Cross From Byline", group: "centro-desde", attrs: ["Cro", "Dri", "Acc"] },
   { id: "cross-aim-target", es: "Centrar hacia el delantero objetivo", en: "Cross Aim Target Man", group: "centro-donde", attrs: ["Cro"] },
   { id: "cross-aim-far", es: "Centrar al segundo palo", en: "Cross Aim Far Post", group: "centro-donde", attrs: ["Cro"] },
   { id: "cross-aim-near", es: "Centrar al primer palo", en: "Cross Aim Near Post", group: "centro-donde", attrs: ["Cro"] },
@@ -145,7 +148,7 @@ export function suggestPlayerInstructions(p: Player, ctx: PIContext): PISuggesti
     }
     if (DEEP_STYLES.has(style) && a(p, "Kic") >= 13) add("gk-long-kicks", "bloque bajo/directo: saltar líneas con saque largo", 2);
     if (ctx.teamRoles.some((r) => TARGET_ROLES.has(r.code)) && a(p, "Kic") >= 12) add("gk-long-kicks", "hay un delantero referencia al que buscar", 2);
-    return finalize(out, ctx.traitIds);
+    return finalize(out, ctx);
   }
 
   // ---- Movimiento
@@ -255,13 +258,19 @@ export function suggestPlayerInstructions(p: Player, ctx: PIContext): PISuggesti
     }
   }
 
-  return finalize(out, ctx.traitIds);
+  return finalize(out, ctx);
 }
 
-/** Elimina duplicados por grupo (se queda la más fuerte) y cruza con los rasgos. */
-function finalize(list: PISuggestion[], traitIds: string[]): PISuggestion[] {
+/**
+ * Quita lo que el juego no deja poner con el rol o que ya trae de serie,
+ * elimina duplicados por grupo (se queda la más fuerte) y cruza con los rasgos.
+ */
+function finalize(list: PISuggestion[], ctx: Pick<PIContext, "role" | "slot" | "traitIds">): PISuggestion[] {
+  const traitIds = ctx.traitIds;
+  const def = roleDefaults(ctx.role.id, ctx.slot);
   const byGroup = new Map<PIGroup, PISuggestion>();
   for (const s of list.sort((x, y) => y.strength - x.strength)) {
+    if (def && (def.blocked.includes(s.pi.id) || def.part.includes(s.pi.id))) continue;
     const cur = byGroup.get(s.pi.group);
     if (!cur) byGroup.set(s.pi.group, s);
   }
@@ -278,4 +287,30 @@ export function strikerAerial(starters: { player: Player; slot: PositionSlot }[]
   const fw = starters.filter((s) => s.slot === "ST");
   if (fw.length === 0) return 0;
   return Math.max(...fw.map((s) => ((s.player.attrs.Hea?.value ?? 0) + (s.player.attrs.Jum?.value ?? 0)) / 2));
+}
+
+export interface RoleTraitClash {
+  trait: TraitDef;
+  /** Instrucción de serie del rol que el rasgo contradice. */
+  pi: PlayerInstruction;
+}
+
+/** Rasgos del jugador que van contra lo que el rol hace de serie (p.ej. «Se pega a la banda» con «Situarse más cerrado»). */
+export function roleTraitClashes(role: RoleDef, slot: PositionSlot, traitIds: string[]): RoleTraitClash[] {
+  const def = roleDefaults(role.id, slot);
+  if (!def) return [];
+  const out: RoleTraitClash[] = [];
+  for (const id of traitIds) {
+    const t = TRAIT_BY_ID[id];
+    const hit = t?.contrastPI?.find((pi) => def.part.includes(pi));
+    if (t && hit && PI_BY_ID[hit]) out.push({ trait: t, pi: PI_BY_ID[hit] });
+  }
+  return out;
+}
+
+/** Nombres de las instrucciones de serie del rol en esa posición. */
+export function roleDefaultNames(role: RoleDef, slot: PositionSlot): { part: string[]; blocked: string[] } {
+  const def = roleDefaults(role.id, slot);
+  const names = (ids: string[]) => ids.map((id) => PI_BY_ID[id]?.es ?? id);
+  return def ? { part: names(def.part), blocked: names(def.blocked) } : { part: [], blocked: [] };
 }

@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import type { ImportSource, Player, Squad } from "./fm/types";
-import type { Tactic } from "./fm/tactics";
+import { migrateTacticRoles, type Tactic } from "./fm/tactics";
 import { migrateInstructions } from "./fm/instructions";
 import { appendSnapshots, type History } from "./fm/history";
 import type { TrainingWeekSettings } from "./fm/training";
@@ -202,7 +202,8 @@ function normalizePersisted(p: Partial<PersistedState>): Partial<PersistedState>
   const imports: Record<string, ImportMeta | null> = { ...(p.imports ?? {}) };
   for (const q of squads) { players[q.id] ??= []; imports[q.id] ??= null; }
   // Instrucciones que ya no existen en FM24 (trampa del fuera de juego, marcaje estricto, anchura defensiva)
-  const tactics = (p.tactics ?? []).map((t) => ({ ...t, instructions: migrateInstructions(t.instructions ?? []) }));
+  // Roles que ya no caben en su hueco (Organizador en banda en MP banda → Extremo inverso)
+  const tactics = (p.tactics ?? []).map((t) => migrateTacticRoles({ ...t, instructions: migrateInstructions(t.instructions ?? []) }));
   return { ...p, squads, players, imports, tactics, history: p.history ?? {}, targets: p.targets ?? {}, leagueSize: p.leagueSize ?? 20 };
 }
 

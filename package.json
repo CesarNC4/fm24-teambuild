@@ -14,7 +14,8 @@
     "check:youth": "tsx scripts/check-youth.ts",
     "check:scouting": "tsx scripts/check-scouting.ts",
     "check:rival": "tsx scripts/check-rival.ts",
-    "check:league": "tsx scripts/check-league.ts"
+    "check:league": "tsx scripts/check-league.ts",
+    "check:roles": "tsx scripts/check-roles.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",

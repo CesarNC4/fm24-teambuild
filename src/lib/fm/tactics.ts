@@ -35,6 +35,26 @@ export interface Tactic {
   pool?: string;
 }
 
+/**
+ * Roles guardados que ya no se pueden poner en su hueco (p.ej. el Organizador
+ * en banda en MP banda, que FM24 no tiene): pasan al rol más parecido.
+ */
+export function migrateTacticRoles(t: Tactic): Tactic {
+  const f = FORMATION_BY_ID[t.formationId];
+  if (!f) return t;
+  let changed = false;
+  const roles = { ...t.roles };
+  for (const fs of f.slots) {
+    const rid = roles[fs.id];
+    const r = rid ? ROLE_BY_ID[rid] : null;
+    if (r && r.positions.includes(fs.slot)) continue;
+    const dutyOf = rid?.split("-")[1];
+    const alt = rid?.startsWith("WP-") && ROLE_BY_ID[`IW-${dutyOf}`] ? `IW-${dutyOf}` : fs.defaultRole;
+    if (rid !== alt) { roles[fs.id] = alt; changed = true; }
+  }
+  return changed ? { ...t, roles } : t;
+}
+
 /** Jugadores disponibles para una táctica según su `pool`. */
 export function poolPlayers(tactic: Tactic, players: Record<string, Player[]>, filialIds: string[]): { players: Player[]; exclude?: Set<string> } {
   const first = players.plantilla ?? [];
@@ -293,7 +313,7 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
 
   const midfield = entries.filter((e) => e.slot.slot === "DM" || e.slot.slot === "MC");
   if (midfield.length > 0 && !midfield.some((e) => HOLDERS.has(e.role.id))) {
-    out.push({ level: "warn", text: "Ningún mediocentro con deber de contención (MCD-De, Ancla, Medio escoba, Recuperador-De…). La defensa quedará expuesta." });
+    out.push({ level: "warn", text: "Ningún mediocentro con deber de contención (Mediocentro-De, Pivote defensivo, Medio cierre, Centrocampista recuperador-De…). La defensa quedará expuesta." });
   }
 
   const fullbacks = entries.filter((e) => ["DL", "DR", "WBL", "WBR"].includes(e.slot.slot));
@@ -310,7 +330,7 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
   }
 
   if (ids.includes("SK-A") && !ids.some((i) => i.startsWith("CD-Co") || i.startsWith("BPD-Co"))) {
-    out.push({ level: "info", text: "Portero líbero en ataque: conviene un central con cobertura o mucha velocidad en la zaga." });
+    out.push({ level: "info", text: "Portero cierre en ataque: conviene un central en Cubrir o mucha velocidad en la zaga." });
   }
   const strikers = entries.filter((e) => e.slot.slot === "ST");
   if (strikers.length === 1 && strikers[0].role.duty === "S" && !entries.some((e) => e.slot.slot === "AMC" && e.role.duty === "A")) {
@@ -321,9 +341,9 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
   const cbs = entries.filter((e) => e.slot.slot === "DC");
   if (cbs.length === 2) {
     const d = cbs.map((e) => e.role.duty);
-    if (d.every((x) => x === "St")) out.push({ level: "warn", text: "Dos centrales stopper: ambos saltan y dejan espacio a la espalda. Combina stopper + cobertura, o los dos en defender." });
-    if (d.every((x) => x === "Co")) out.push({ level: "warn", text: "Dos centrales en cobertura: regalan espacio por delante y no disputan. Combina cobertura + stopper, o los dos en defender." });
-    if (cbs.every((e) => e.role.code === "BPD")) out.push({ level: "info", text: "Dos centrales con salida de balón: mucho riesgo de pase desde atrás; suele bastar con uno." });
+    if (d.every((x) => x === "St")) out.push({ level: "warn", text: "Dos centrales en Tapón: ambos saltan y dejan espacio a la espalda. Combina Tapón + Cubrir, o los dos en defender." });
+    if (d.every((x) => x === "Co")) out.push({ level: "warn", text: "Dos centrales en Cubrir: regalan espacio por delante y no disputan. Combina Cubrir + Tapón, o los dos en defender." });
+    if (cbs.every((e) => e.role.code === "BPD")) out.push({ level: "info", text: "Dos Defensas con toque: mucho riesgo de pase desde atrás; suele bastar con uno." });
   }
   const libero = entries.find((e) => e.role.code === "L");
   if (libero) {
@@ -331,7 +351,7 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
     else if (cbs.filter((e) => e.role.code !== "L").some((e) => e.role.duty !== "D")) out.push({ level: "info", text: "Líbero: los otros dos centrales deberían ir en defender para cubrirle." });
   }
   if (entries.some((e) => e.role.code === "HB") && cbs.length !== 2) {
-    out.push({ level: "warn", text: "Medio escoba solo tiene sentido delante de una pareja de centrales (baja entre ellos al defender)." });
+    out.push({ level: "warn", text: "Medio cierre solo tiene sentido delante de una pareja de centrales (baja entre ellos al defender)." });
   }
   const pivots = entries.filter((e) => e.slot.slot === "DM" || e.slot.slot === "MC");
   if (pivots.length === 2 && pivots.every((e) => e.role.duty === "D")) {
@@ -362,7 +382,7 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
   // Delanteros
   if (strikers.length === 2) {
     const d = strikers.map((e) => e.role.duty);
-    if (d.every((x) => x === "A")) out.push({ level: "warn", text: "Dos delanteros en ataque: nadie enlaza con el medio campo. Pareja clásica: uno crea (retrasado/referencia/completo en apoyo) y otro remata." });
+    if (d.every((x) => x === "A")) out.push({ level: "warn", text: "Dos delanteros en ataque: nadie enlaza con el medio campo. Pareja clásica: uno crea (segundo delantero/objetivo/completo en apoyo) y otro remata." });
     if (d.every((x) => x === "S")) out.push({ level: "info", text: "Dos delanteros en apoyo: poca amenaza a la espalda de la defensa." });
     if (strikers.some((e) => e.role.code === "TQ") && !strikers.some((e) => e.role.duty === "A" && e.role.code !== "TQ")) {
       out.push({ level: "info", text: "Trequartista sin rematador por delante: crea pero nadie remata." });
@@ -371,7 +391,7 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
   const amc = entries.filter((e) => e.slot.slot === "AMC");
   if (strikers.length === 1 && amc.length === 1) {
     if (strikers[0].role.duty === "A" && amc[0].role.duty === "A") out.push({ level: "info", text: "Delantero y mediapunta ambos en ataque: sin enlace entre medio y ataque. Uno de los dos en apoyo reparte el trabajo." });
-    if (strikers[0].role.code === "F9" && amc[0].role.code !== "SS") out.push({ level: "info", text: "Falso nueve: funciona mejor con un segundo delantero (SS) que ataque el espacio que deja." });
+    if (strikers[0].role.code === "F9" && amc[0].role.code !== "SS") out.push({ level: "info", text: "Falso nueve: funciona mejor con un delantero sorpresa (SS) que ataque el espacio que deja." });
   }
 
   // Reparto vertical de deberes
@@ -385,7 +405,7 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
   // Sistemas estrechos sin amplitud natural
   const wideCount = entries.filter((e) => ["ML", "MR", "AML", "AMR", "WBL", "WBR"].includes(e.slot.slot)).length;
   if (wideCount === 0 && !entries.some((e) => ["MEZ", "CAR", "TQ", "CWB", "WB"].includes(e.role.code) || (["DL", "DR"].includes(e.slot.slot) && e.role.duty !== "D"))) {
-    out.push({ level: "warn", text: "Sistema estrecho sin nadie que dé amplitud: usa mezzala/carrilero interior en el medio o laterales en apoyo/ataque." });
+    out.push({ level: "warn", text: "Sistema estrecho sin nadie que dé amplitud: usa mezzala/interior mixto en el medio o laterales en apoyo/ataque." });
   }
 
   // ---- Rol × estilo (guía de Magicomonta) y banda con uno o dos jugadores
@@ -396,14 +416,14 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
   const waiting = tr.deep;
   const transition = tr.counter && !tr.possession;
   if (style) {
-    if (possession && codes.includes("NCB")) out.push({ level: "info", text: "Central sin florituras en un estilo de posesión: despeja en vez de jugar; mejor Defensa central o con salida de balón." });
+    if (possession && codes.includes("NCB")) out.push({ level: "info", text: "Central práctico en un estilo de posesión: despeja en vez de jugar; mejor Defensa central o Defensa con toque." });
     if (transition && codes.includes("L")) out.push({ level: "info", text: "Líbero en un estilo de transiciones: sube y deja la defensa corta justo cuando más se contraataca. Es un rol de posesión." });
-    if (possession && cbs.filter((e) => e.role.code === "BPD").length === 2) out.push({ level: "info", text: "Dos centrales con salida de balón en posesión: buscan el pase arriesgado; en posesión suele bastar uno junto a un Defensa central." });
-    if (pressing && codes.includes("A")) out.push({ level: "warn", text: "Ancla en un estilo de presión: se queda protegiendo la zona y deja huecos en la presión. Mejor Mediocentro defensivo o Recuperador." });
-    if (waiting && (codes.includes("B2B") || codes.includes("BWM"))) out.push({ level: "info", text: "Box-to-box / Recuperador en un estilo de espera: persiguen al rival y rompen el bloque. Mediocentro defensivo, Ancla o Segundo volante encajan mejor." });
+    if (possession && cbs.filter((e) => e.role.code === "BPD").length === 2) out.push({ level: "info", text: "Dos Defensas con toque en posesión: buscan el pase arriesgado; en posesión suele bastar uno junto a un Defensa central." });
+    if (pressing && codes.includes("A")) out.push({ level: "warn", text: "Pivote defensivo en un estilo de presión: se queda protegiendo la zona y deja huecos en la presión. Mejor Mediocentro o Centrocampista recuperador." });
+    if (waiting && (codes.includes("B2B") || codes.includes("BWM"))) out.push({ level: "info", text: "Todoterreno / Centrocampista recuperador en un estilo de espera: persiguen al rival y rompen el bloque. Mediocentro, Pivote defensivo o Segundo volante encajan mejor." });
     const gk = entries.find((e) => e.slot.slot === "GK");
     if (gk?.role.code === "SK" && ((tactic.instructions.includes("linea-def-baja") || tactic.instructions.includes("linea-def-mucho-mas-baja")) || cbs.some((e) => e.role.duty === "Co"))) {
-      out.push({ level: "info", text: "Portero líbero con línea baja o un central en cobertura: no tiene espacio que cubrir. Con esa defensa rinde más el Portero clásico." });
+      out.push({ level: "info", text: "Portero cierre con línea baja o un central en Cubrir: no tiene espacio que cubrir. Con esa defensa rinde más el Portero clásico." });
     }
   }
   // Banda con un solo jugador (sin nadie por delante ni por detrás en esa banda)
@@ -415,7 +435,7 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
     const e = flank[0];
     const name = side === "L" ? "izquierda" : "derecha";
     if (SINGLE_BAD.has(e.role.code)) {
-      out.push({ level: "warn", text: `Banda ${name}: ${e.role.es} como único jugador de banda no cubre las dos fases (o se mete por dentro y deja la banda vacía). Carrilero, Carrilero completo, Interior o Extremo en apoyo.` });
+      out.push({ level: "warn", text: `Banda ${name}: ${e.role.es} como único jugador de banda no cubre las dos fases (o se mete por dentro y deja la banda vacía). Carrilero, Carrilero completo, Centrocampista de banda o Extremo en apoyo.` });
     } else if (SINGLE_GOOD.has(e.role.code) && e.role.code !== "W" && e.role.duty === "A" && e.role.code !== "CWB") {
       out.push({ level: "info", text: `Banda ${name}: jugador único en ataque; le costará replegar. El apoyo equilibra las dos fases.` });
     } else if (e.role.code === "FB" && e.role.duty === "D") {
@@ -430,14 +450,14 @@ function tacticWarningsRaw(tactic: Tactic): TacticWarning[] {
       if (e.role.code === "IWB" || e.role.code === "IFB") out.push({ level: "warn", text: `Rombo: el lateral invertido se mete en un centro ya lleno de jugadores. Carrilero o Carrilero completo.` });
     }
     const am = entries.find((e) => e.slot.slot === "AMC");
-    if (am && (am.role.code === "TQ" || am.role.code === "EG")) out.push({ level: "info", text: "Rombo: el Trequartista/Enganche se desconecta del juego con cuatro en el centro; mejor Mediapunta u Organizador avanzado." });
-    if (!entries.some((e) => e.role.code === "MEZ" || e.role.code === "CAR")) out.push({ level: "info", text: "Rombo: sin Mezzala ni Carrilero interior nadie ocupa los pasillos exteriores del medio campo." });
+    if (am && (am.role.code === "TQ" || am.role.code === "EG")) out.push({ level: "info", text: "Rombo: el Trequartista/Enganche se desconecta del juego con cuatro en el centro; mejor Mediapunta u Organizador adelantado." });
+    if (!entries.some((e) => e.role.code === "MEZ" || e.role.code === "CAR")) out.push({ level: "info", text: "Rombo: sin Mezzala ni Interior mixto nadie ocupa los pasillos exteriores del medio campo." });
   }
   // Delanteros por estilo
   if (style && strikers.length === 2) {
     const sc = strikers.map((e) => e.role.code);
-    if (transition && !sc.includes("TF") && !sc.includes("CF")) out.push({ level: "info", text: "Estilo directo/transiciones con dos puntas: combina uno alto y fuerte (Referencia o Completo) con uno rápido (Cazagoles/Avanzado)." });
-    if (possession && !sc.some((c) => ["SS", "DLF", "F9", "TQ", "CF"].includes(c))) out.push({ level: "info", text: "Posesión con dos puntas: un creador (Retrasado, Falso nueve, Trequartista) y un rematador; el juego se apoya en paredes y desmarques al espacio." });
+    if (transition && !sc.includes("TF") && !sc.includes("CF")) out.push({ level: "info", text: "Estilo directo/transiciones con dos puntas: combina uno alto y fuerte (Objetivo o Completo) con uno rápido (Ariete/Avanzado)." });
+    if (possession && !sc.some((c) => ["SS", "DLF", "F9", "TQ", "CF"].includes(c))) out.push({ level: "info", text: "Posesión con dos puntas: un creador (Segundo delantero, Falso nueve, Trequartista) y un rematador; el juego se apoya en paredes y desmarques al espacio." });
   }
   return out;
 }
