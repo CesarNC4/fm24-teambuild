@@ -5,6 +5,7 @@
  * propuestos y lo que falta para evolucionar al siguiente estilo.
  */
 
+import { MIN_LEAGUE_SAMPLE, PROFILE_LABEL, profileOfRole, searchFilters, type LeagueStatCuts } from "./stats";
 import { ATTR_BY_KEY, type AttrKey } from "./attributes";
 import { roleFunctions } from "./balance";
 import { STYLE_BY_ID, profileOf, styleChildren, styleTraits, type StylePreset } from "./instructions";
@@ -220,6 +221,8 @@ export interface FocusContext {
   budget: { transfer: number | null; wage: number | null };
   firstTeam: Player[];
   created: Record<string, CreatedFocus>;
+  /** Cortes de la liga de la vista Moneyball, para los filtros de «Análisis y estadísticas». */
+  statsLeague?: LeagueStatCuts | null;
 }
 
 function horizonOf(n: SquadNeed): FocusHorizon {
@@ -315,7 +318,13 @@ export function buildFocuses(needs: SquadNeed[], ctx: FocusContext): Recruitment
     const h = Math.max(aerialHeight(role, n.slot) ?? 0, ctx.dna.minHeight ?? 0);
     if (h) details.push({ label: "Altura", value: `≥ ${h} cm` });
     if (wageCap != null) details.push({ label: "Sueldo", value: `≤ ${fmtMoney(wageCap)}${ctx.budget.wage == null ? " (ADN)" : ""}` });
-    details.push({ label: "Análisis y estadísticas", value: "sin filtro hasta que la temporada tenga minutos (prioridad 10)" });
+    const statProfile = profileOfRole(role, n.slot);
+    const fromLeague = (ctx.statsLeague?.count[statProfile] ?? 0) >= MIN_LEAGUE_SAMPLE;
+    details.push({
+      label: "Análisis y estadísticas",
+      value: searchFilters(statProfile, ctx.statsLeague ?? null).join(" · "),
+      hint: `${PROFILE_LABEL[statProfile]}: ${fromLeague ? "el verde de tu liga" : "umbrales del Excel, de otra liga (orientativos) hasta que importes estadísticas de tu liga"}`,
+    });
     const note = [...n.reasons, ...(n.profile ? [`Umbrales del plan: ${profileText(n.profile)}.`] : [])].join(" ");
     out.push({ key, title: `${POSITION_LABEL[n.slot]} · ${role.es}`, need: n, horizon, priority, fields, details, scout, analyst, scoutWhy, created, alerts, note });
   }

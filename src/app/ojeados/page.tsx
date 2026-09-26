@@ -11,6 +11,10 @@ import { youthSquadIds } from "@/lib/fm/tactics";
 import { DnaPanel, FocusCard, StaffNetwork } from "@/components/Recruitment";
 import { estimateGameYear } from "@/lib/fm/youth";
 import { buildLeagueStats, leagueLevelPercentile } from "@/lib/fm/league";
+import { MetricChip, PerfBadge } from "@/components/Perf";
+import { attrVsPerf, evaluatePerf, profileOfRole, profileOfSlot, sampleOf, type AttrVsPerf, type PerfEval } from "@/lib/fm/stats";
+import { useStats } from "@/lib/useStats";
+import type { ReactNode } from "react";
 import { useAppStore, type TargetEntry } from "@/lib/store";
 import { useLeague } from "@/lib/useLeague";
 import { profileText } from "@/lib/fm/slotPlan";
@@ -64,15 +68,30 @@ export default function ScoutingPage() {
   const needsRes = useMemo(() => (tactic && firstTeam.length ? squadNeeds(tactic, firstTeam, gameYear, { traits: playerTraits, youth: youthPlayers, league }) : null), [tactic, firstTeam, gameYear, playerTraits, youthPlayers, league]);
   const evals = useMemo(() => (needsRes ? evaluateAll(scouted, needsRes.needs, firstTeam, budget, gameYear) : []), [needsRes, scouted, firstTeam, budget, gameYear]);
   const [showAssignments, setShowAssignments] = useState(true);
+  const statsCtx = useStats();
   const dnaRules = useMemo(() => styleDnaRules(tactic), [tactic]);
   const maxWage = useMemo(() => Math.max(0, ...firstTeam.map((p) => p.wage ?? 0)) || null, [firstTeam]);
   const dnaByUid = useMemo(() => new Map<string, DnaResult>(evals.map((e) => [e.player.uid, dnaCheck(e.player, clubDna, dnaRules, e.fit?.need.slot ?? null, maxWage)])), [evals, clubDna, dnaRules, maxWage]);
-  const focuses = useMemo(() => (needsRes && tactic ? buildFocuses(needsRes.needs, { tactic, staff, dna: clubDna, budget, firstTeam, created: createdFocuses }) : []), [needsRes, tactic, staff, clubDna, budget, firstTeam, createdFocuses]);
+  const focuses = useMemo(() => (needsRes && tactic ? buildFocuses(needsRes.needs, { tactic, staff, dna: clubDna, budget, firstTeam, created: createdFocuses, statsLeague: statsCtx.league }) : []), [needsRes, tactic, staff, clubDna, budget, firstTeam, createdFocuses, statsCtx.league]);
   const load = useMemo(() => staffLoad(focuses), [focuses]);
   const proposals = useMemo(() => proposedTargets(evals, clubDna, dnaRules, maxWage, new Set(Object.keys(targets))), [evals, clubDna, dnaRules, maxWage, targets]);
   const evolution = useMemo(() => evolutionNeeds(tactic, needsRes?.lineup ?? null), [tactic, needsRes]);
   const track = (e: CandidateEval) => setTarget(e.player.uid, { status: "seguir", note: "", addedAt: new Date().toISOString(), snapshot: { name: e.player.name, club: e.player.club, value: e.player.value, wage: e.player.wage, contractExpiry: e.player.contractExpiry, age: e.player.age } });
   const overpaid = useMemo(() => (needsRes ? overpaidPlayers(firstTeam, needsRes.lineup) : []), [needsRes, firstTeam]);
+
+  // Rendimiento real (Moneyball): confirma o pone en duda el informe
+  const leagueClubs = useMemo(() => new Set(leaguePool.clubs.map((c) => c.club)), [leaguePool.clubs]);
+  const perfByUid = useMemo(() => {
+    const m = new Map<string, RowPerf>();
+    for (const e of evals) {
+      const rec = statsCtx.records.get(e.player.uid);
+      if (!rec) continue;
+      const profile = e.fit ? profileOfRole(e.fit.need.role, e.fit.need.slot) : e.player.isGoalkeeper ? "portero" : profileOfSlot(e.player.position.slots[0]);
+      const perf = evaluatePerf(rec, profile, statsCtx.league);
+      m.set(e.player.uid, { perf, vs: attrVsPerf(perf, e.player, league), sameLeague: !!e.player.club && leagueClubs.has(e.player.club) });
+    }
+    return m;
+  }, [evals, statsCtx, league, leagueClubs]);
 
   const list = evals.filter((e) => (!onlyDna || dnaByUid.get(e.player.uid)?.ok) && (!hideDiscarded || e.verdict !== "descartar") && (slotFilter === "todos" || e.fit?.need.slotId === slotFilter) && (maxAge === "" || (e.player.age ?? 0) <= maxAge));
 
@@ -249,7 +268,7 @@ export default function ScoutingPage() {
               <thead>
                 <tr>
                   <th>Jugador</th><th className="num">Edad</th><th>Club</th><th>Hueco</th><th className="num">Nivel</th><th className="num">vs 1º eq.</th>
-                  <th>Personalidad</th><th className="num">Det</th><th className="num">Sueldo</th><th className="num">Valor</th><th>Contrato</th><th className="num">Conoc.</th>{league && <th className="num" title="Percentil de su nivel dentro de su familia de posición en la liga importada">Liga %</th>}<th>Veredicto</th><th></th>
+                  <th>Personalidad</th><th className="num">Det</th><th className="num">Sueldo</th><th className="num">Valor</th><th>Contrato</th><th className="num">Conoc.</th>{league && <th className="num" title="Percentil de su nivel dentro de su familia de posición en la liga importada">Liga %</th>}<th title="Rendimiento real (vista Moneyball) en el perfil del hueco">Rendimiento</th><th>Veredicto</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -260,6 +279,7 @@ export default function ScoutingPage() {
                     leaguePct={league ? leagueLevelPercentile(league, e.player) : undefined}
                     target={targets[e.player.uid] ?? null}
                     dna={dnaByUid.get(e.player.uid) ?? null}
+                    perf={perfByUid.get(e.player.uid) ?? null}
                     onTrack={() => track(e)}
                     isOpen={open === e.player.uid}
                     toggle={() => setOpen(open === e.player.uid ? null : e.player.uid)}
@@ -278,7 +298,14 @@ export default function ScoutingPage() {
   );
 }
 
-function Row({ e, leaguePct, target, dna, onTrack, isOpen, toggle }: { e: CandidateEval; leaguePct?: number | null; target: TargetEntry | null; dna: DnaResult | null; onTrack: () => void; isOpen: boolean; toggle: () => void }) {
+interface RowPerf {
+  perf: PerfEval;
+  vs: AttrVsPerf | null;
+  /** Su club está en tu liga: las estadísticas son comparables. */
+  sameLeague: boolean;
+}
+
+function Row({ e, leaguePct, target, dna, perf, onTrack, isOpen, toggle }: { e: CandidateEval; leaguePct?: number | null; target: TargetEntry | null; dna: DnaResult | null; perf: RowPerf | null; onTrack: () => void; isOpen: boolean; toggle: () => void }) {
   const p = e.player;
   const tier = e.personalityTier as PersonalityTierLevel;
   const det = p.attrs.Det?.value ?? null;
@@ -301,6 +328,7 @@ function Row({ e, leaguePct, target, dna, onTrack, isOpen, toggle }: { e: Candid
         <td className="text-xs whitespace-nowrap">{p.contractExpiry ?? "—"}{p.transferStatus && /listado|listed/i.test(p.transferStatus) ? " · transferible" : ""}</td>
         <td className={`num text-xs ${e.knowledge < 0.5 ? "text-attr-mid" : ""}`}>{Math.round(e.knowledge * 100)} %</td>
         {leaguePct !== undefined && <td className={`num text-xs ${leaguePct != null && leaguePct >= 80 ? "text-attr-good" : ""}`}>{leaguePct ?? "–"}</td>}
+        <td className="text-xs whitespace-nowrap">{perf ? <PerfBadge perf={perf.perf} short /> : <span className="text-muted">–</span>}</td>
         <td className="text-xs whitespace-nowrap"><span className={`px-1.5 py-0.5 rounded ${VERDICT_CLASS[e.verdict]}`}>{VERDICT_LABEL[e.verdict]}</span></td>
         <td className="text-xs whitespace-nowrap" onClick={(ev) => ev.stopPropagation()}>
           {target ? <span className="text-muted">★ {target.status}</span> : <button className="text-[10px] px-1.5 rounded border border-border hover:bg-surface-2" onClick={onTrack}>seguir</button>}
@@ -309,18 +337,24 @@ function Row({ e, leaguePct, target, dna, onTrack, isOpen, toggle }: { e: Candid
       </tr>
       {isOpen && (
         <tr className="bg-surface-2/50">
-          <td colSpan={15} className="text-xs p-3 whitespace-normal">
+          <td colSpan={16} className="text-xs p-3 whitespace-normal">
             <div className="grid md:grid-cols-3 gap-3 [&>div]:min-w-0">
               <div>
                 <div className="font-medium mb-1">A favor</div>
                 {e.pluses.length === 0 && <p className="text-muted">Nada destacable.</p>}
                 {e.pluses.map((r, i) => <p key={i} className="text-attr-good">+ {r}</p>)}
+                {perf && perf.perf.strengths.length > 0 && <p className="text-attr-good">+ Rinde: {perf.perf.strengths.map((m) => <MetricChip key={m.key} m={m} />).reduce<ReactNode[]>((a, x, i) => (i ? [...a, " · ", x] : [x]), [])}</p>}
+                {perf?.vs && perf.vs.diff >= 25 && <p className="text-attr-good">+ {perf.vs.text}</p>}
               </div>
               <div>
                 <div className="font-medium mb-1">En contra</div>
                 {e.red.map((r, i) => <p key={"r" + i} className="text-attr-low">✕ {r}</p>)}
                 {e.warnings.map((r, i) => <p key={"w" + i} className="text-attr-mid">⚠ {r}</p>)}
                 {dna && !dna.ok && <p className="text-attr-mid">✗ Fuera del ADN: {dna.misses.join(", ")}.</p>}
+                {perf && perf.perf.weaknesses.length > 0 && <p className="text-attr-mid">⚠ Flojo en: {perf.perf.weaknesses.map((m) => <MetricChip key={m.key} m={m} />).reduce<ReactNode[]>((a, x, i) => (i ? [...a, " · ", x] : [x]), [])}</p>}
+                {perf?.vs && perf.vs.diff <= -25 && <p className="text-attr-mid">⚠ {perf.vs.text}</p>}
+                {perf && sampleOf(perf.perf.rec) !== "firme" && <p className="text-attr-mid">⚠ Muestra {sampleOf(perf.perf.rec) === "provisional" ? "corta" : "insuficiente"} ({perf.perf.rec.minutes} minutos): con pocos minutos los números salen inflados.</p>}
+                {perf && !perf.sameLeague && perf.perf.sample !== "insuficiente" && <p className="text-attr-mid">⚠ Sus estadísticas son de otra liga: si es mucho más baja, engañan. Mejor tu liga o un escalón arriba o abajo.</p>}
                 {e.red.length + e.warnings.length === 0 && (!dna || dna.ok) && <p className="text-muted">Nada.</p>}
               </div>
               <div>

@@ -11,6 +11,10 @@ import { formatDeltas, progressSince } from "@/lib/fm/history";
 import { AttrCell, ScoreBadge } from "@/components/AttrCell";
 import { SpecialistsPanel } from "@/components/Specialists";
 import type { SpecialistGroup } from "@/lib/fm/specialists";
+import { PerfBadge } from "@/components/Perf";
+import { evaluatePerf, profileForPlayer } from "@/lib/fm/stats";
+import { buildLineup } from "@/lib/fm/tactics";
+import { useStats } from "@/lib/useStats";
 
 const SPECIALIST_GROUPS: SpecialistGroup[] = ["balon-parado", "con-balon", "sin-balon", "portero", "instrucciones"];
 
@@ -37,6 +41,20 @@ export default function SquadPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "best", dir: -1 });
   const [groups, setGroups] = useState<Set<AttrGroup>>(new Set(["tecnico", "mental", "fisico"]));
   const [filter, setFilter] = useState("");
+  const tactics = useAppStore((s) => s.tactics);
+  const activeTacticId = useAppStore((s) => s.activeTacticId);
+  const statsCtx = useStats();
+  const tactic = tactics.find((t) => t.id === activeTacticId) ?? tactics[0] ?? null;
+  const lineup = useMemo(() => (tactic && players.length ? buildLineup(tactic, players) : null), [tactic, players]);
+  // Rendimiento (Moneyball) de la última temporada importada, con el perfil de su rol si es titular
+  const perfByUid = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof evaluatePerf>>();
+    for (const p of players) {
+      const rec = statsCtx.records.get(p.uid);
+      if (rec) m.set(p.uid, evaluatePerf(rec, profileForPlayer(p.uid, p, rec, lineup), statsCtx.league));
+    }
+    return m;
+  }, [players, statsCtx, lineup]);
 
   const rows = useMemo(() => {
     return players.map((p) => {
@@ -135,6 +153,7 @@ export default function SquadPage() {
               {th("wage", "Sueldo", "num")}
               {th("value", "Valor", "num")}
               <th>Minutos</th>
+              <th title={`Rendimiento real (Moneyball) de ${statsCtx.season ?? "la temporada"}: ver la pestaña Moneyball`}>Rendimiento</th>
               <th>Contrato</th>
               <th>Personalidad</th>
               <th className="num" title="Puntos de atributo ganados o perdidos desde la exportación anterior">Evol.</th>
@@ -163,6 +182,7 @@ export default function SquadPage() {
                 <td className="num" title={p.wageRaw ?? undefined}>{p.wageRaw ?? fmtMoney(p.wage)}</td>
                 <td className="num">{fmtMoney(p.value)}</td>
                 <td className="text-xs">{p.playingTime ?? "–"}</td>
+                <td className="text-xs whitespace-nowrap">{perfByUid.has(p.uid) ? <PerfBadge perf={perfByUid.get(p.uid)} short /> : <span className="text-muted">–</span>}</td>
                 <td className="text-xs">{p.contractExpiry ?? "–"}</td>
                 <td className="text-xs">{p.personality ?? "–"}</td>
                 {(() => {

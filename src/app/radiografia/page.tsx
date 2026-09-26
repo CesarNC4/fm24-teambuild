@@ -14,9 +14,13 @@ import { youthSquadIds, type DepthTone } from "@/lib/fm/tactics";
 import { estimateGameYear } from "@/lib/fm/youth";
 import { useAppStore } from "@/lib/store";
 import { coverageText, useLeague } from "@/lib/useLeague";
+import { BAND_BORDER, BAND_TEXT, MetricChip, PerfBadge } from "@/components/Perf";
+import { roleFunctions } from "@/lib/fm/balance";
+import { VERDICT_WORD, evaluatePerf, functionChecks, profileOfRole, type FunctionCheck, type PerfEval } from "@/lib/fm/stats";
+import { statsCoverageText, useStats } from "@/lib/useStats";
 
-type Mode = "profundidad" | "estilo" | "liga" | "sueldos";
-const MODE_LABEL: Record<Mode, string> = { profundidad: "Profundidad", estilo: "Estilo", liga: "Frente a la liga", sueldos: "Sueldos" };
+type Mode = "profundidad" | "estilo" | "liga" | "rendimiento" | "sueldos";
+const MODE_LABEL: Record<Mode, string> = { profundidad: "Profundidad", estilo: "Estilo", liga: "Frente a la liga", rendimiento: "Rendimiento", sueldos: "Sueldos" };
 const TONE_TEXT: Record<DepthTone, string> = { good: "text-attr-good", ok: "text-attr-mid", poor: "text-attr-low" };
 const TONE_BORDER: Record<DepthTone, string> = { good: "border-attr-good", ok: "border-attr-mid", poor: "border-attr-low ring-2 ring-attr-low/40" };
 const TONE_BG: Record<DepthTone, string> = { good: "bg-attr-good", ok: "bg-attr-mid", poor: "bg-attr-low" };
@@ -77,6 +81,19 @@ export default function RadiographyPage() {
   const wages = useMemo(() => wageSummary(staying, state), [staying, state]);
   const overpaid = useMemo(() => (today ? overpaidPlayers(firstTeam, today.lineup) : []), [firstTeam, today]);
   const leagueCmp = useMemo(() => (league && today ? leagueComparison(firstTeam, league, today.lineup) : null), [league, firstTeam, today]);
+  // Rendimiento real (Moneyball) del titular de cada hueco, con el perfil de su rol
+  const statsCtx = useStats();
+  const perfBySlot = useMemo(() => {
+    const m = new Map<string, { perf: PerfEval; fns: FunctionCheck[] }>();
+    for (const s of state?.slots ?? []) {
+      const uid = s.starter?.player.uid;
+      const rec = uid ? statsCtx.records.get(uid) : undefined;
+      if (!rec) continue;
+      const profile = profileOfRole(s.role, s.slot.slot);
+      m.set(s.slotId, { perf: evaluatePerf(rec, profile, statsCtx.league), fns: functionChecks(roleFunctions(s.role, s.slot.slot, playerTraits[uid!] ?? []).fns, rec, profile, statsCtx.league) });
+    }
+    return m;
+  }, [state, statsCtx, playerTraits]);
   const evals = useMemo(() => (today && scouted.length ? evaluateAll(scouted, today.needs, firstTeam, budget, gameYear) : []), [today, scouted, firstTeam, budget, gameYear]);
 
   if (hydrated && firstTeam.length === 0) {
@@ -100,12 +117,18 @@ export default function RadiographyPage() {
     if (mode === "profundidad") return TONE_BORDER[s.tone];
     if (mode === "estilo") return failing.has(s.slotId) ? TONE_BORDER.poor : involved.has(s.slotId) ? TONE_BORDER.good : "border-border";
     if (mode === "liga") { const t = pctTone(s.leaguePct); return t ? TONE_BORDER[t] : "border-border"; }
+    if (mode === "rendimiento") { const b = perfBySlot.get(s.slotId)?.perf.band; return b != null ? BAND_BORDER[b] : "border-border"; }
     return s.starter && overpaidUid.has(s.starter.player.uid) ? TONE_BORDER.ok : "border-border";
   };
   const cardBadge = (s: SlotState) => {
     if (mode === "liga") return s.leaguePct != null ? <span className={`font-mono ${TONE_TEXT[pctTone(s.leaguePct)!]}`}>P{s.leaguePct}</span> : <span className="text-muted">–</span>;
     if (mode === "sueldos") return <span className="font-mono text-muted">{s.starter?.player.wage != null ? fmtMoney(s.starter.player.wage) : "–"}</span>;
     if (mode === "estilo") return failing.has(s.slotId) ? <span className="text-attr-low">✗</span> : involved.has(s.slotId) ? <span className="text-attr-good">✓</span> : null;
+    if (mode === "rendimiento") {
+      const x = perfBySlot.get(s.slotId);
+      if (!x) return <span className="text-muted">–</span>;
+      return x.perf.band != null ? <span className={`${BAND_TEXT[x.perf.band]} ${x.perf.sample === "provisional" ? "opacity-60" : ""}`}>{VERDICT_WORD[x.perf.band]}{x.fns.some((f) => !f.ok) ? " ✗" : ""}</span> : <span className="text-muted">{x.perf.rec.minutes}&apos;</span>;
+    }
     return s.starter ? <ScoreBadge score={s.starter.effective} /> : null;
   };
   const byHorizon = HORIZONS.map((h) => ({ h, list: actions.filter((a) => a.horizon === h) })).filter((x) => x.list.length);
@@ -202,6 +225,17 @@ export default function RadiographyPage() {
                 {sel.decline != null && <p className="text-attr-mid">{sel.starter?.player.name} pierde {sel.decline.toFixed(1)} puntos por la edad respecto a hoy.</p>}
                 {sel.starter && <p className="text-muted">Contrato hasta {expiryYear(sel.starter.player) ?? "?"}{sel.starter.player.wage != null ? ` · ${fmtMoney(sel.starter.player.wage)}` : ""}{sel.leaguePct != null ? ` · percentil ${sel.leaguePct} de la liga` : ""}. Sueldo del hueco (titular y suplente): {fmtMoney(sel.wage)}.</p>}
                 {sel.need.reasons.map((r, i) => <p key={i}>• {r}</p>)}
+                {perfBySlot.has(sel.slotId) && (() => {
+                  const x = perfBySlot.get(sel.slotId)!;
+                  return (
+                    <div className="border-t border-border pt-1 mt-1 space-y-0.5">
+                      <div>Rendimiento {statsCtx.season}: <PerfBadge perf={x.perf} /></div>
+                      <div className="flex flex-wrap gap-x-3">{[...x.perf.strengths, ...x.perf.weaknesses].map((m) => <MetricChip key={m.key} m={m} />)}</div>
+                      {x.fns.map((f) => <p key={f.fn} className={f.ok ? "text-attr-good" : "text-attr-low"}>{f.ok ? "✓" : "✗"} {f.text}</p>)}
+                      {horizon > 0 && <p className="text-[10px] text-muted">Estadísticas de la temporada importada, no proyectadas.</p>}
+                    </div>
+                  );
+                })()}
                 {failing.has(sel.slotId) && style && <p className="text-attr-low">• {style.style.name}: {failing.get(sel.slotId)!.join("; ")}.</p>}
               </div>
               <div className="text-xs space-y-1 border-t border-border pt-2">
@@ -261,6 +295,22 @@ export default function RadiographyPage() {
                         <div className="text-muted pl-3">{g.detail}{!g.ok && g.req.kind === "role" ? " — se arregla en Táctica." : ""}</div>
                       </div>
                     )))}
+                </>
+              )}
+              {mode === "rendimiento" && (
+                <>
+                  <h2 className="font-semibold text-sm">Rendimiento real</h2>
+                  <p className="text-muted">{statsCoverageText(statsCtx)}. En el campo, el veredicto del titular con las estadísticas del perfil de su rol; ✗ si no cumple alguna función del rol (crear, dar amplitud, recuperar…). Todo el detalle está en <Link href="/moneyball" className="underline">Moneyball</Link>.</p>
+                  {perfBySlot.size === 0 && <p className="text-muted">Sin estadísticas de tus titulares: importa tu plantilla con la vista Moneyball.</p>}
+                  {state.slots.filter((s) => perfBySlot.has(s.slotId)).map((s) => {
+                    const x = perfBySlot.get(s.slotId)!;
+                    return (
+                      <div key={s.slotId}>
+                        <div className="flex justify-between gap-2"><span>{POSITION_LABEL[s.slot.slot]} · {s.starter?.player.name}</span><PerfBadge perf={x.perf} short /></div>
+                        {x.fns.filter((f) => !f.ok).map((f) => <div key={f.fn} className="text-attr-low pl-2">✗ {f.text}</div>)}
+                      </div>
+                    );
+                  })}
                 </>
               )}
               {mode === "liga" && (

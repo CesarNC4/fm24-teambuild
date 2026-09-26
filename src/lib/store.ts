@@ -10,6 +10,7 @@ import { appendSnapshots, type History } from "./fm/history";
 import type { TrainingWeekSettings } from "./fm/training";
 import { mergeStaff, type StaffMember } from "./fm/staff";
 import { DEFAULT_DNA, type ClubDna, type CreatedFocus } from "./fm/recruitment";
+import { mergeStats, removeStatsSource, type StatRecord, type StatsStore } from "./fm/stats";
 
 /** Almacenamiento en IndexedDB (mucha más capacidad que localStorage). */
 const idbStorage: StateStorage = {
@@ -74,6 +75,10 @@ interface AppState {
   clubDna: ClubDna;
   /** Focos de contratación que ya creaste en el juego (clave → ojeador asignado). */
   createdFocuses: Record<string, CreatedFocus>;
+  /** Estadísticas (vista Moneyball) por UID y temporada: no pisan a los jugadores y guardan las temporadas pasadas. */
+  stats: StatsStore;
+  /** Última importación de estadísticas de cada fuente. */
+  statsImports: Record<string, ImportMeta | null>;
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
@@ -97,6 +102,8 @@ interface AppState {
   clearStaff: () => void;
   setClubDna: (dna: ClubDna) => void;
   setCreatedFocus: (key: string, focus: CreatedFocus | null) => void;
+  importStats: (source: ImportSource, records: StatRecord[], meta: ImportMeta) => void;
+  clearStats: (source: ImportSource) => void;
   /** Restaura una copia de seguridad (sustituye todo lo persistido). */
   restoreBackup: (data: Partial<PersistedState>) => void;
 }
@@ -122,6 +129,8 @@ export const useAppStore = create<AppState>()(
       staffImport: null,
       clubDna: DEFAULT_DNA,
       createdFocuses: {},
+      stats: {},
+      statsImports: {},
 
       setPlayers: (source, players, meta) =>
         set((s) => ({
@@ -187,6 +196,8 @@ export const useAppStore = create<AppState>()(
           if (focus) createdFocuses[key] = focus; else delete createdFocuses[key];
           return { createdFocuses };
         }),
+      importStats: (source, records, meta) => set((s) => ({ stats: mergeStats(s.stats, records), statsImports: { ...s.statsImports, [source]: meta } })),
+      clearStats: (source) => set((s) => ({ stats: removeStatsSource(s.stats, source), statsImports: { ...s.statsImports, [source]: null } })),
       restoreBackup: (data) => set((s) => ({ ...s, ...normalizePersisted(data), hydrated: true })),
     }),
     {
@@ -210,6 +221,8 @@ export const useAppStore = create<AppState>()(
         staffImport: s.staffImport,
         clubDna: s.clubDna,
         createdFocuses: s.createdFocuses,
+        stats: s.stats,
+        statsImports: s.statsImports,
       }),
       // Datos guardados antes de que existieran los filiales o la liga: se completan las fuentes fijas.
       merge: (persisted, current) => ({ ...current, ...normalizePersisted((persisted ?? {}) as Partial<PersistedState>) }),
@@ -221,7 +234,7 @@ export const useAppStore = create<AppState>()(
 );
 
 /** Estado que se persiste (y que exporta la copia de seguridad). */
-export type PersistedState = Pick<AppState, "players" | "imports" | "squads" | "headerOverrides" | "clubName" | "tactics" | "activeTacticId" | "playerTraits" | "trainingWeek" | "scoutingBudget" | "history" | "targets" | "leagueSize" | "staff" | "staffImport" | "clubDna" | "createdFocuses">;
+export type PersistedState = Pick<AppState, "players" | "imports" | "squads" | "headerOverrides" | "clubName" | "tactics" | "activeTacticId" | "playerTraits" | "trainingWeek" | "scoutingBudget" | "history" | "targets" | "leagueSize" | "staff" | "staffImport" | "clubDna" | "createdFocuses" | "stats" | "statsImports">;
 
 /** Completa fuentes fijas y campos nuevos en datos guardados por versiones anteriores. */
 function normalizePersisted(p: Partial<PersistedState>): Partial<PersistedState> {
@@ -235,7 +248,7 @@ function normalizePersisted(p: Partial<PersistedState>): Partial<PersistedState>
   // Instrucciones que ya no existen en FM24 (trampa del fuera de juego, marcaje estricto, anchura defensiva)
   // Fijados por plantilla y roles que ya no caben en su hueco (Organizador en banda en MP banda → Extremo inverso)
   const tactics = (p.tactics ?? []).map((t) => migrateTactic({ ...t, instructions: migrateInstructions(t.instructions ?? []) }));
-  return { ...p, squads, players, imports, tactics, history: p.history ?? {}, targets: p.targets ?? {}, leagueSize: p.leagueSize ?? 20, staff: p.staff ?? [], staffImport: p.staffImport ?? null, clubDna: { ...DEFAULT_DNA, ...(p.clubDna ?? {}) }, createdFocuses: p.createdFocuses ?? {} };
+  return { ...p, squads, players, imports, tactics, history: p.history ?? {}, targets: p.targets ?? {}, leagueSize: p.leagueSize ?? 20, staff: p.staff ?? [], staffImport: p.staffImport ?? null, clubDna: { ...DEFAULT_DNA, ...(p.clubDna ?? {}) }, createdFocuses: p.createdFocuses ?? {}, stats: p.stats ?? {}, statsImports: p.statsImports ?? {} };
 }
 
 function mostCommonClub(players: Player[]): string | null {

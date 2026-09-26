@@ -12,7 +12,10 @@ import { roleDefaultNames, strikerAerial, suggestPlayerInstructions, type PISugg
 import { bestGroupRoles, recommendRoleGroups, recommendRoles, recommendedRoleIds } from "@/lib/fm/styleRoles";
 import { SPECIALIST_BY_ID } from "@/lib/fm/specialists";
 import { CAPABILITY_LABEL, checkText, profileText, tacticPlan, type SlotNeed } from "@/lib/fm/slotPlan";
-import { AREA_LABEL, FUNCTION_HINT, FUNCTION_LABEL, FUNCTION_ORDER, tacticBalance, type BalanceIssue } from "@/lib/fm/balance";
+import { slotPerformance, type SlotPerf } from "@/lib/fm/stats";
+import { useStats } from "@/lib/useStats";
+import { PerfBadge } from "@/components/Perf";
+import { AREA_LABEL, FUNCTION_HINT, FUNCTION_LABEL, FUNCTION_ORDER, roleFunctions, tacticBalance, type BalanceIssue } from "@/lib/fm/balance";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
 
@@ -111,6 +114,18 @@ export default function TacticPage() {
     const squadPlayers = pool.exclude ? pool.players.filter((p) => !pool.exclude!.has(p.uid)) : pool.players;
     return tacticPlan(tactic, lineup, squadPlayers, playerTraits);
   }, [tactic, lineup, allPlayers, squads, playerTraits]);
+  // Lo que dicen las estadísticas (Moneyball) de cada titular en su hueco
+  const statsCtx = useStats();
+  const perfBySlot = useMemo(() => {
+    const m = new Map<string, SlotPerf>();
+    if (!lineup) return m;
+    for (const s of lineup.slots) {
+      const p = s.starter?.player;
+      const rec = p ? statsCtx.records.get(p.uid) : undefined;
+      if (p && rec) m.set(s.slot.id, slotPerformance(s.role, s.slot.slot, p, rec, roleFunctions(s.role, s.slot.slot, playerTraits[p.uid] ?? []).fns, statsCtx.league));
+    }
+    return m;
+  }, [lineup, statsCtx, playerTraits]);
   const roleGroupRecs = useMemo(() => (tactic && lineup && roleRecs.length ? recommendRoleGroups(tactic, lineup, roleRecs) : []), [tactic, lineup, roleRecs]);
   const currentFit = currentStyle ? styleRank.find((f) => f.style.id === currentStyle.id) ?? null : null;
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
@@ -775,6 +790,16 @@ export default function TacticPage() {
                       ))}
                     </div>
                   ))}
+                  {perfBySlot.has(sp.slotId) && (() => {
+                    const x = perfBySlot.get(sp.slotId)!;
+                    return (
+                      <div className="pt-1 border-t border-border">
+                        <div>Datos {statsCtx.season}: <PerfBadge perf={x.perf} /></div>
+                        {x.checks.filter((c) => !c.ok).map((c) => <div key={c.fn} className="text-attr-low">✗ {c.text}</div>)}
+                        {x.advice.map((a, i) => <div key={i} className="text-attr-mid">→ {a}</div>)}
+                      </div>
+                    );
+                  })()}
                   {sp.traits.filter((t) => t.kind === "choca").map((t) => <div key={"c" + t.trait.id} className="text-attr-low">✗ Rasgo «{t.trait.es}»: {t.why}</div>)}
                   {sp.traits.filter((t) => t.kind === "tiene").map((t) => <div key={"t" + t.trait.id} className="text-attr-good">✓ Rasgo «{t.trait.es}»: {t.why}</div>)}
                   {sp.traits.some((t) => t.kind === "ensenar") && (

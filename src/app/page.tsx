@@ -7,6 +7,8 @@ import type { ImportResult, ImportSource } from "@/lib/fm/types";
 import { useAppStore } from "@/lib/store";
 import { coverageText, useLeague } from "@/lib/useLeague";
 import { STAFF_KIND_LABEL, isStaffExport, parseStaffHtml, type StaffKind } from "@/lib/fm/staff";
+import { isStatsExport, readStatsExport, sampleOf, seasonOf, statName } from "@/lib/fm/stats";
+import { estimateGameYear } from "@/lib/fm/youth";
 
 const FIELD_OPTIONS: { value: string; label: string }[] = [
   ["name", "Nombre"], ["age", "Edad"], ["wage", "Sueldo"], ["value", "Valor de traspaso"],
@@ -53,7 +55,7 @@ export default function ImportPage() {
 
   const exportBackup = () => {
     const s = useAppStore.getState();
-    const data = { version: 1, exportedAt: new Date().toISOString(), players: s.players, imports: s.imports, squads: s.squads, headerOverrides: s.headerOverrides, clubName: s.clubName, tactics: s.tactics, activeTacticId: s.activeTacticId, playerTraits: s.playerTraits, trainingWeek: s.trainingWeek, scoutingBudget: s.scoutingBudget, history: s.history, targets: s.targets, leagueSize: s.leagueSize, staff: s.staff, staffImport: s.staffImport, clubDna: s.clubDna, createdFocuses: s.createdFocuses };
+    const data = { version: 1, exportedAt: new Date().toISOString(), players: s.players, imports: s.imports, squads: s.squads, headerOverrides: s.headerOverrides, clubName: s.clubName, tactics: s.tactics, activeTacticId: s.activeTacticId, playerTraits: s.playerTraits, trainingWeek: s.trainingWeek, scoutingBudget: s.scoutingBudget, history: s.history, targets: s.targets, leagueSize: s.leagueSize, staff: s.staff, staffImport: s.staffImport, clubDna: s.clubDna, createdFocuses: s.createdFocuses, stats: s.stats, statsImports: s.statsImports };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -76,6 +78,12 @@ export default function ImportPage() {
   const staffImport = useAppStore((s) => s.staffImport);
   const importStaff = useAppStore((s) => s.importStaff);
   const clearStaff = useAppStore((s) => s.clearStaff);
+  const stats = useAppStore((s) => s.stats);
+  const statsImports = useAppStore((s) => s.statsImports);
+  const importStats = useAppStore((s) => s.importStats);
+  const clearStats = useAppStore((s) => s.clearStats);
+  const clubName = useAppStore((s) => s.clubName);
+  const allPlayers = useAppStore((s) => s.players);
   const savedOverrides = useAppStore((s) => s.headerOverrides);
   const setHeaderOverrides = useAppStore((s) => s.setHeaderOverrides);
 
@@ -100,9 +108,29 @@ export default function ImportPage() {
     }
   }, [html, overrides, staffPreview]);
 
+  // Vista de estadísticas (Moneyball): se guarda aparte, por UID y temporada
+  const isStats = useMemo(() => !!html && !staffPreview && isStatsExport(html), [html, staffPreview]);
+  const statsOnly = isStats && !!result && ATTRIBUTES.length - result.missingAttrs.length < 20;
+  const [statsYear, setStatsYear] = useState<number | null>(null);
+  const guessYear = useMemo(() => (isStats ? estimateGameYear([...(result?.players ?? []), ...(allPlayers.plantilla ?? [])]) : null), [isStats, result, allPlayers.plantilla]);
+  const year = statsYear ?? guessYear;
+  const statsClub = source === "plantilla" ? clubName : squads.find((q) => q.id === source && q.kind === "rival")?.name ?? null;
+  const statsPreview = useMemo(
+    () => (isStats && html && year ? readStatsExport(html, { season: seasonOf(year), source, importedAt: "", club: statsClub }) : null),
+    [isStats, html, year, source, statsClub],
+  );
+  const byUid = useMemo(() => new Map(Object.values(allPlayers).flat().map((p) => [p.uid, p])), [allPlayers]);
+  const saveStats = () => {
+    if (!html || !year) return;
+    const importedAt = new Date().toISOString();
+    const { records } = readStatsExport(html, { season: seasonOf(year), source, importedAt, club: statsClub });
+    importStats(source, records, { fileName, importedAt, count: records.length });
+  };
+
   const onFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
     setSaved(false);
+    setStatsYear(null);
     setFileName(file.name);
     setHtml(await readFileText(file));
   }, []);
@@ -119,6 +147,7 @@ export default function ImportPage() {
       name = prev.includes(" + ") ? prev.replace(/\+ \d+ más/, `+ ${Number(n) + 1} más`) : `${prev} + 1 más`;
     }
     setPlayers(source, players, { fileName: name, importedAt: new Date().toISOString(), count: players.length });
+    if (isStats) saveStats();
     setHeaderOverrides(overrides);
     setSaved(true);
   };
@@ -132,6 +161,7 @@ export default function ImportPage() {
             <li>En el juego, abre la vista de <b>Plantilla</b> (o la lista de ojeados, una búsqueda de toda la liga, o la plantilla del próximo rival) con una vista que muestre <b>todos los atributos</b>, posición, edad, personalidad, sueldo, valor y fin de contrato.</li>
             <li>Pulsa <kbd className="px-1 rounded bg-surface-2 border border-border">Ctrl</kbd>+<kbd className="px-1 rounded bg-surface-2 border border-border">P</kbd> → <i>Página web</i> y guarda el archivo.</li>
             <li>Súbelo aquí. Revisa las columnas detectadas y guarda.</li>
+            <li>La vista de <b>estadísticas</b> (Moneyball) se reconoce sola y se guarda aparte, por jugador y temporada, sin tocar sus atributos. Impórtala en la misma fuente que sus atributos: tu primer equipo, los ojeados o cada rival de liga (así la liga tiene con quién compararse).</li>
           </ol>
 
           <label
@@ -200,6 +230,12 @@ export default function ImportPage() {
                   <div className="text-muted text-xs">
                     {m ? `${m.count} jugadores · ${m.fileName} · ${new Date(m.importedAt).toLocaleString("es")}` : "vacío"}
                   </div>
+                  {statsImports[q.id] && (
+                    <div className="text-xs text-muted flex items-center gap-2">
+                      <span>estadísticas: {statsImports[q.id]!.count} · {new Date(statsImports[q.id]!.importedAt).toLocaleDateString("es")}</span>
+                      <button className="text-attr-low hover:underline" onClick={() => clearStats(q.id)}>borrar</button>
+                    </div>
+                  )}
                   {q.kind === "rival" && (
                     <label className="text-xs text-muted flex items-center gap-1 mt-0.5">
                       competición
@@ -331,7 +367,54 @@ export default function ImportPage() {
         </section>
       )}
 
-      {result && (
+      {isStats && statsPreview && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <div>Vista de <b>estadísticas</b>: <b>{statsPreview.records.length}</b> jugadores, <b>{statsPreview.withMinutes}</b> con minutos, {statsPreview.recognized} estadísticas reconocidas.</div>
+            <label className="flex items-center gap-1">
+              temporada
+              <select className="bg-surface border border-border rounded px-1 py-0.5" value={year ?? ""} onChange={(e) => setStatsYear(Number(e.target.value))}>
+                {[-1, 0, 1].map((d) => (guessYear ?? year ?? 0) + d).filter((y) => y > 1900).map((y) => <option key={y} value={y}>{seasonOf(y)}</option>)}
+              </select>
+            </label>
+            {statsOnly && (
+              <button onClick={() => { saveStats(); setSaved(true); }} className="ml-auto px-4 py-1.5 rounded-md bg-accent text-accent-fg font-medium">
+                Guardar estadísticas en {squads.find((q) => q.id === source)?.name ?? source}
+              </button>
+            )}
+            {statsOnly && saved && <span className="text-attr-good">Guardado ✓</span>}
+          </div>
+          <p className="text-xs text-muted">
+            {statsOnly
+              ? "Solo estadísticas: se guardan aparte por UID y temporada, sin cambiar los jugadores ni sus atributos. Una temporada nueva no borra la anterior."
+              : "Esta vista trae atributos y estadísticas: al guardar se guardan las dos cosas."}
+            {" "}Muestra firme desde 900 minutos o 10 titularidades; provisional desde 450. Los nombres «- -» (no cargaron antes de exportar) se completan por UID con los jugadores que ya tienes.
+          </p>
+          {statsPreview.withMinutes > 0 && (
+            <div className="overflow-auto border border-border rounded-md max-h-72">
+              <table className="tbl w-full">
+                <thead><tr><th>Jugador</th><th>Posición</th><th className="num">Min</th><th className="num">Tit.</th><th>Muestra</th><th className="num">Media</th><th></th></tr></thead>
+                <tbody>
+                  {statsPreview.records.filter((r) => r.minutes > 0).slice(0, 30).map((r) => (
+                    <tr key={r.uid}>
+                      <td>{statName(r, byUid)}</td>
+                      <td>{r.position}</td>
+                      <td className="num">{r.minutes}</td>
+                      <td className="num">{r.starts ?? "–"}</td>
+                      <td className={sampleOf(r) === "firme" ? "text-attr-good" : sampleOf(r) === "provisional" ? "text-attr-mid" : "text-muted"}>{sampleOf(r)}</td>
+                      <td className="num">{r.values.avgRating?.toFixed(2) ?? "–"}</td>
+                      <td className="text-xs text-muted">{stats[r.uid] ? `${Object.keys(stats[r.uid]).length} temporada(s) guardada(s)` : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {statsPreview.withMinutes === 0 && <p className="text-xs text-attr-mid">Nadie tiene minutos todavía: al principio de temporada la vista sale vacía. Se guarda igual (nombres y posiciones), pero no hay nada que juzgar hasta mitad de temporada.</p>}
+        </section>
+      )}
+
+      {result && !statsOnly && (
         <section className="space-y-4">
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <div><b>{result.players.length}</b> jugadores leídos</div>

@@ -21,7 +21,8 @@
     "check:specialists": "tsx scripts/check-specialists.ts",
     "check:plan": "tsx scripts/check-plan.ts",
     "check:recruitment": "tsx scripts/check-recruitment.ts",
-    "check:radiography": "tsx scripts/check-radiography.ts"
+    "check:radiography": "tsx scripts/check-radiography.ts",
+    "check:moneyball": "tsx scripts/check-moneyball.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",

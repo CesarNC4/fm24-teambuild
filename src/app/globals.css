@@ -14,6 +14,12 @@
   --attr-mid: #c98b00;
   --attr-good: #1d7a3f;
   --attr-elite: #0b5cad;
+  /* Semáforo Moneyball: celeste, verde, amarillo, naranja, rojo */
+  --band-4: #0891b2;
+  --band-3: #1d7a3f;
+  --band-2: #a16207;
+  --band-1: #c2410c;
+  --band-0: #b42318;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +36,11 @@
     --attr-mid: #f2b84b;
     --attr-good: #4ade80;
     --attr-elite: #60a5fa;
+    --band-4: #22d3ee;
+    --band-3: #4ade80;
+    --band-2: #facc15;
+    --band-1: #fb923c;
+    --band-0: #f36c60;
   }
 }
 
@@ -46,6 +57,11 @@
   --color-attr-mid: var(--attr-mid);
   --color-attr-good: var(--attr-good);
   --color-attr-elite: var(--attr-elite);
+  --color-band-4: var(--band-4);
+  --color-band-3: var(--band-3);
+  --color-band-2: var(--band-2);
+  --color-band-1: var(--band-1);
+  --color-band-0: var(--band-0);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
