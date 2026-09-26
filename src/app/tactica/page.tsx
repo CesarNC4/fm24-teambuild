@@ -7,9 +7,10 @@ import { AXIS_GROUPS, CHOICE_GROUPS, FAMILY_LABEL, INSTRUCTIONS, INSTRUCTION_BY_
 import { tacticAdvice } from "@/lib/fm/advice";
 import { rankStyles, UNIT_SHORT } from "@/lib/fm/styles";
 import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
-import { DEFAULT_CUP_YOUTH, POOL_LABEL, depthMap, lineupForPool, newTactic, poolPlayers, rankFormations, tacticLocks, tacticWarnings, withLocks, youthSquadIds, type DepthTone, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
+import { DEFAULT_CUP_YOUTH, POOL_LABEL, depthMap, lineupForPool, newTactic, poolPlayers, rankFormations, tacticLocks, withLocks, youthSquadIds, type DepthTone, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
 import { roleDefaultNames, roleTraitClashes, strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
-import { recommendRoles, recommendedRoleIds } from "@/lib/fm/styleRoles";
+import { bestGroupRoles, recommendRoleGroups, recommendRoles, recommendedRoleIds } from "@/lib/fm/styleRoles";
+import { AREA_LABEL, FUNCTION_HINT, FUNCTION_LABEL, FUNCTION_ORDER, tacticBalance, type BalanceIssue } from "@/lib/fm/balance";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
 
@@ -22,6 +23,9 @@ const TONE_CLASS = {
 } as const;
 
 const DEPTH_CLASS: Record<DepthTone, string> = { good: "text-attr-good", ok: "text-attr-mid", poor: "text-attr-low" };
+
+const ISSUE_ICON: Record<BalanceIssue["level"], string> = { warn: "⚠", info: "ℹ", tip: "→", ok: "✓" };
+const ISSUE_CLASS: Record<BalanceIssue["level"], string> = { warn: "text-attr-mid", info: "text-muted", tip: "text-attr-good", ok: "text-attr-good" };
 
 const MOTOR_CLASS = { alto: "text-attr-good", medio: "text-attr-mid", "medio-cond": "text-attr-mid", bajo: "text-attr-low" } as const;
 
@@ -62,6 +66,7 @@ export default function TacticPage() {
   const playerTraits = useAppStore((s) => s.playerTraits);
 
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [hoverSlots, setHoverSlots] = useState<string[]>([]);
 
   // Táctica por defecto la primera vez
   useEffect(() => {
@@ -79,7 +84,7 @@ export default function TacticPage() {
   const lineup: LineupResult | null = poolLineup?.lineup ?? null;
   const depth = useMemo(() => (tactic && players.length ? depthMap(tactic, players) : []), [tactic, players]);
   const hasYouth = useMemo(() => youthSquadIds(squads).length > 0, [squads]);
-  const warnings = useMemo(() => (tactic ? tacticWarnings(tactic) : []), [tactic]);
+  const balance = useMemo(() => (tactic ? tacticBalance(tactic, { lineup, traits: playerTraits }) : null), [tactic, lineup, playerTraits]);
   const advice = useMemo(() => (tactic && lineup ? tacticAdvice(tactic, lineup) : []), [tactic, lineup]);
   const styleRank = useMemo(() => (lineup ? rankStyles(lineup) : []), [lineup]);
   const formationRank = useMemo(() => {
@@ -94,6 +99,7 @@ export default function TacticPage() {
     const players = pool.exclude ? pool.players.filter((p) => !pool.exclude!.has(p.uid)) : pool.players;
     return recommendRoles(tactic.styleId, lineup, players);
   }, [tactic, lineup, allPlayers, squads]);
+  const roleGroupRecs = useMemo(() => (tactic && lineup && roleRecs.length ? recommendRoleGroups(tactic, lineup, roleRecs) : []), [tactic, lineup, roleRecs]);
   const currentFit = currentStyle ? styleRank.find((f) => f.style.id === currentStyle.id) ?? null : null;
   const fits = useMemo(() => (lineup ? INSTRUCTIONS.map((i) => instructionFit(i, lineup)) : []), [lineup]);
   const piBySlot = useMemo(() => {
@@ -271,7 +277,7 @@ export default function TacticPage() {
             return (
               <div
                 key={s.slot.id}
-                className={`absolute -translate-x-1/2 -translate-y-1/2 w-[120px] rounded-md border bg-surface/95 shadow-sm text-[11px] cursor-pointer ${isSel ? "border-accent ring-2 ring-accent/40" : gap ? "border-attr-low ring-2 ring-attr-low/40" : "border-border"}`}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 w-[120px] rounded-md border bg-surface/95 shadow-sm text-[11px] cursor-pointer ${isSel ? "border-accent ring-2 ring-accent/40" : hoverSlots.includes(s.slot.id) ? "border-attr-mid ring-2 ring-attr-mid/50" : gap ? "border-attr-low ring-2 ring-attr-low/40" : "border-border"}`}
                 style={{ left: `${s.slot.x}%`, top: `${100 - s.slot.y}%` }}
                 onClick={() => setSelectedSlot(s.slot.id)}
                 title={gap?.text ?? (swap ? `Juvenil por el mínimo: entra por ${swap.replaced?.name ?? "—"}, cuesta ${swap.cost.toFixed(1)} puntos` : undefined)}
@@ -324,6 +330,16 @@ export default function TacticPage() {
                 {depth.length > 0 && <p className="text-[11px] text-muted">Verde: a 8 puntos o menos. Ámbar: hasta 15. Rojo: más lejos, sin suplente o con el suplente fuera de su puesto (*).</p>}
               </>
             )}
+            {selected && (() => {
+              const e = balance?.entries.find((x) => x.slotId === selected.slot.id);
+              if (!e || !e.fns.length) return e?.free ? <p className="text-[11px] text-muted">Rol libre: no trae instrucciones de serie; lo que hace depende de los rasgos del jugador y de lo que le añadas.</p> : null;
+              return (
+                <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                  <span className="text-muted">Funciones{e.free ? " (rol libre, por rasgos)" : ""}:</span>
+                  {e.fns.map((fn) => <span key={fn} className="px-1 rounded border border-border" title={`${FUNCTION_LABEL[fn]}: ${e.why[fn]}`}>{FUNCTION_LABEL[fn]}</span>)}
+                </div>
+              );
+            })()}
             {selected && (
               <table className="tbl w-full">
                 <thead><tr><th>Jugador</th><th className="num">Rol</th><th className="num">Pos.</th><th className="num">Efect.</th><th></th></tr></thead>
@@ -346,13 +362,49 @@ export default function TacticPage() {
             )}
           </section>
 
-          <section className="bg-surface border border-border rounded-lg p-3 space-y-1.5">
-            <h2 className="font-semibold">Equilibrio de roles</h2>
-            {warnings.length === 0 && <p className="text-xs text-attr-good">Sin avisos: la combinación de roles es coherente.</p>}
-            {warnings.map((w, i) => (
-              <p key={i} className={`text-xs ${w.level === "warn" ? "text-attr-mid" : "text-muted"}`}>{w.level === "warn" ? "⚠ " : "ℹ "}{w.text}</p>
-            ))}
-          </section>
+          {balance && (() => {
+            const problems = balance.issues.filter((i) => i.level !== "ok" && !i.intended);
+            const intended = balance.issues.filter((i) => i.intended);
+            const good = balance.issues.filter((i) => i.level === "ok");
+            const issueRow = (i: BalanceIssue, k: number, cls = ISSUE_CLASS[i.level]) => (
+              <p key={k} className={`text-xs ${cls}`} onMouseEnter={() => setHoverSlots(i.slots)} onMouseLeave={() => setHoverSlots([])}>
+                {ISSUE_ICON[i.level]} <span className="text-muted">{AREA_LABEL[i.area]} ·</span> {i.text}
+                {i.intended && <span className="text-muted"> Intencionado ({i.intended}).</span>}
+              </p>
+            );
+            return (
+              <section className="bg-surface border border-border rounded-lg p-3 space-y-1.5">
+                <h2 className="font-semibold">Equilibrio por funciones</h2>
+                <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]">
+                  {FUNCTION_ORDER.map((fn) => (
+                    <span key={fn} title={FUNCTION_HINT[fn]} className={`cursor-help ${balance.counts[fn] ? "" : "text-muted"}`}
+                      onMouseEnter={() => setHoverSlots(balance.entries.filter((e) => e.fns.includes(fn)).map((e) => e.slotId))} onMouseLeave={() => setHoverSlots([])}>
+                      {FUNCTION_LABEL[fn]} <b>{balance.counts[fn]}</b>
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted">
+                  Deberes {balance.duties.D} De · {balance.duties.S} Ap · {balance.duties.A} At (referencia 3 · 4 · 3) ·{" "}
+                  <span onMouseEnter={() => setHoverSlots(balance.veryAttacking.map((e) => e.slotId))} onMouseLeave={() => setHoverSlots([])}>{balance.veryAttacking.length} en Muy ofensiva</span> con el equipo en {balance.teamMentality}.
+                  Las funciones salen de las instrucciones de serie de cada rol; pasa el ratón para verlas en el campo.
+                </p>
+                {problems.length === 0 && <p className="text-xs text-attr-good">Sin avisos: la combinación de roles es coherente.</p>}
+                {problems.map((i, k) => issueRow(i, k))}
+                {intended.length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer text-xs text-muted">Intencionado por el plan ({intended.length})</summary>
+                    <div className="mt-1 space-y-1">{intended.map((i, k) => issueRow(i, k, "text-muted"))}</div>
+                  </details>
+                )}
+                {good.length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer text-xs text-attr-good">Lo que encaja ({good.length})</summary>
+                    <div className="mt-1 space-y-1">{good.map((i, k) => issueRow(i, k))}</div>
+                  </details>
+                )}
+              </section>
+            );
+          })()}
 
           {lineup && (
             <section className="bg-surface border border-border rounded-lg p-3 space-y-2">
@@ -495,14 +547,49 @@ export default function TacticPage() {
             {roleRecs.some((r) => !r.currentOk && r.options.length) && (
               <button className="text-xs px-2 py-0.5 rounded border border-border hover:bg-surface-2" onClick={() => {
                 const roles = { ...tactic.roles };
-                for (const r of roleRecs) if (!r.currentOk && r.options.length) roles[r.slotId] = (r.options.slice().sort((a, b) => (b.starter ?? 0) - (a.starter ?? 0))[0]).role.id;
+                const grouped = new Set(roleGroupRecs.flatMap((g) => g.slotIds));
+                for (const r of roleRecs) if (!grouped.has(r.slotId) && !r.currentOk && r.options.length) roles[r.slotId] = (r.options.slice().sort((a, b) => (b.starter ?? 0) - (a.starter ?? 0))[0]).role.id;
+                const best = bestGroupRoles(tactic, lineup, roleRecs);
+                for (const g of roleGroupRecs) if (g.slotIds.some((id) => !roleRecs.find((r) => r.slotId === id)?.currentOk)) for (const id of g.slotIds) roles[id] = best[id];
                 updateTactic(tactic.id, { roles });
-              }}>Poner en cada hueco la opción que mejor le va al titular</button>
+              }}>Poner en cada hueco (o pareja) la opción que mejor le va a los titulares</button>
             )}
           </div>
-          <p className="text-xs text-muted">No es un rol fijo: cada estilo admite varias opciones por hueco. Junto a cada una, la puntuación del titular actual en ese rol y el mejor jugador de la plantilla para él. ★ en los desplegables del campo = opción del estilo. Clic en una opción para ponerla.</p>
+          <p className="text-xs text-muted">No es un rol fijo: cada estilo admite varias opciones por hueco. Los huecos que se juegan juntos (centrales, medios, delanteros y cada banda) se eligen por parejas: cada combinación se puntúa con los titulares y con el detector de equilibrio. ★ en los desplegables del campo = opción del estilo. Clic en una opción para ponerla.</p>
+          {roleGroupRecs.length > 0 && (
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
+              {roleGroupRecs.map((g) => {
+                const rows = g.combos.some((c) => c.current) ? g.combos : [...g.combos, g.current];
+                const names = g.slotIds.map((id) => lineup.slots.find((s) => s.slot.id === id)?.starter?.player.name.split(" ").slice(-1)[0] ?? "—");
+                return (
+                  <div key={g.key} className={`bg-surface border rounded-lg p-2.5 text-xs ${g.combos[0]?.current ? "border-border" : "border-attr-mid/60"}`}
+                    onMouseEnter={() => setHoverSlots(g.slotIds)} onMouseLeave={() => setHoverSlots([])}>
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="font-medium">{g.label}</span>
+                      <span className="text-muted truncate">{g.slotIds.map((id, k) => `${POSITION_LABEL[lineup.slots.find((s) => s.slot.id === id)!.slot.slot]} ${names[k]}`).join(" · ")}</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {rows.map((c, k) => (
+                        <li key={k} className={c.current ? "font-medium" : ""}>
+                          <div className="flex items-start gap-1.5">
+                            <button className={`text-left hover:underline ${c.current ? "text-accent" : ""}`} title="Poner esta combinación" onClick={() => updateTactic(tactic.id, (t) => ({ ...t, roles: { ...t.roles, ...Object.fromEntries(g.slotIds.map((id, j) => [id, c.roles[j].id])) } }))}>
+                              {c.current ? "● " : "○ "}{c.roles.map((r) => `${r.es} (${DUTY_LABEL[r.duty]})`).join(" + ")}
+                            </button>
+                            <span className="ml-auto whitespace-nowrap text-muted" title={`Titulares ${c.score.toFixed(0)} · equilibrio ${c.balance >= 0 ? "+" : ""}${c.balance.toFixed(0)}`}><ScoreBadge score={c.score} /></span>
+                          </div>
+                          {c.good.slice(0, 1).map((x, j) => <div key={"g" + j} className="text-attr-good font-normal pl-3">✓ {x}</div>)}
+                          {c.bad.slice(0, 2).map((x, j) => <div key={"b" + j} className={`font-normal pl-3 ${x.level === "warn" ? "text-attr-mid" : "text-muted"}`}>{x.level === "warn" ? "⚠" : "ℹ"} {x.text}</div>)}
+                          {c.current && !g.combos.includes(c) && <div className="text-muted font-normal pl-3">(tu combinación actual)</div>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
-            {roleRecs.map((r) => (
+            {roleRecs.filter((r) => !roleGroupRecs.some((g) => g.slotIds.includes(r.slotId))).map((r) => (
               <div key={r.slotId} className={`bg-surface border rounded-lg p-2.5 text-xs ${r.currentOk ? "border-border" : "border-attr-mid/60"}`}>
                 <div className="flex items-baseline gap-2 mb-1">
                   <span className="text-muted">{POSITION_LABEL[r.slot]}</span>

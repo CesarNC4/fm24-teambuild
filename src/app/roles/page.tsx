@@ -7,6 +7,7 @@ import { DUTY_LABEL, POSITION_LABEL, POSITION_ORDER, rolesForPosition, type Role
 import { scoreRole } from "@/lib/fm/scoring";
 import { roleDefaultNames } from "@/lib/fm/playerInstructions";
 import { MENTALITIES, PRESS_LABEL, roleDefaults } from "@/lib/fm/roleInstructions";
+import { FUNCTION_LABEL, roleFunctions } from "@/lib/fm/balance";
 import type { PositionSlot } from "@/lib/fm/types";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -152,6 +153,7 @@ function RoleDefaultsBox({ role, slot }: { role: RoleDef; slot: PositionSlot }) 
   const def = roleDefaults(role.id, slot);
   if (!def) return null;
   const names = roleDefaultNames(role, slot);
+  const rf = roleFunctions(role, slot);
   return (
     <div className="text-xs space-y-1 border-t border-border pt-2">
       <div className="font-medium">De serie en el juego</div>
@@ -160,6 +162,14 @@ function RoleDefaultsBox({ role, slot }: { role: RoleDef; slot: PositionSlot }) 
       <div><span className="text-muted">Parte del rol:</span> {names.part.length ? names.part.join(", ") : "ninguna"}</div>
       <div><span className="text-muted">No se pueden poner:</span> {names.blocked.length ? names.blocked.join(", ") : "ninguna"}</div>
       {def.note && <div className="text-muted">{def.note}</div>}
+      <div className="font-medium pt-1">Funciones en el campo</div>
+      {rf.free && <div className="text-muted">Rol libre: sin instrucciones de serie, lo que hace depende de los rasgos del jugador.</div>}
+      {rf.fns.length > 0 ? (
+        <ul className="space-y-0.5">
+          {rf.fns.map((fn) => <li key={fn}><b>{FUNCTION_LABEL[fn]}</b> <span className="text-muted">— {rf.why[fn]}</span></li>)}
+        </ul>
+      ) : !rf.free && <div className="text-muted">Ninguna destacada.</div>}
+      <div className="text-muted">El detector de equilibrio de Táctica usa estas funciones para juzgar parejas y bandas.</div>
     </div>
   );
 }

@@ -12,7 +12,8 @@
 import { ROLE_BY_ID, ROLES, rolesForPosition, type RoleDef } from "./roles";
 import { scoreRole } from "./scoring";
 import { STYLE_BY_ID, type StyleFamily, type StylePreset } from "./stylePresets";
-import { familiarity, type LineupResult } from "./tactics";
+import { familiarity, type LineupResult, type Tactic } from "./tactics";
+import { tacticBalance, type BalanceLevel } from "./balance";
 import type { Player, PositionSlot } from "./types";
 
 export interface RoleOption {
@@ -358,4 +359,118 @@ export function recommendedRoleIds(styleId: string | null | undefined, slot: Pos
   if (!style) return new Set();
   const grp = roleOptionsFor(style).find((x) => x.slots.includes(slot));
   return new Set((grp?.options ?? []).flatMap((opt) => expand(opt, slot)).map((x) => x.role.id));
+}
+
+// ---------------------------------------------------------------------------
+// Recomendación por parejas (pivotes, centrales, delanteros y bandas)
+// ---------------------------------------------------------------------------
+
+export interface RoleCombo {
+  /** Un rol por hueco, en el orden de `slotIds`. */
+  roles: RoleDef[];
+  /** Media de la puntuación de los titulares en esos roles. */
+  score: number;
+  /** Premio o castigo del detector de equilibrio. */
+  balance: number;
+  total: number;
+  /** Lo que encaja (reglas en verde) y lo que no, de los huecos de la pareja. */
+  good: string[];
+  bad: { level: BalanceLevel; text: string }[];
+  current: boolean;
+}
+
+export interface RoleGroupRecommendation {
+  key: string;
+  label: string;
+  slotIds: string[];
+  combos: RoleCombo[];
+  current: RoleCombo;
+}
+
+const BALANCE_WEIGHT: Record<BalanceLevel, number> = { warn: -8, info: -3, tip: -1, ok: 2 };
+/** Reglas de estructura de los documentos que pesan más que su nivel al elegir parejas. */
+const RULE_WEIGHT: Record<string, number> = { "bandas-espejo": -8 };
+
+/** Huecos que se eligen juntos: centrales, medios, delanteros y cada banda. */
+function roleGroups(lineup: LineupResult): { key: string; label: string; slotIds: string[] }[] {
+  const s = lineup.slots;
+  const ids = (f: (x: (typeof s)[number]) => boolean) => s.filter(f).map((x) => x.slot.id);
+  const out: { key: string; label: string; slotIds: string[] }[] = [];
+  const push = (key: string, label: string, slotIds: string[]) => { if (slotIds.length >= 2 && slotIds.length <= 4) out.push({ key, label, slotIds }); };
+  push("centrales", "Centrales", ids((x) => x.slot.slot === "DC"));
+  const mids = ids((x) => x.slot.slot === "DM" || x.slot.slot === "MC");
+  push("medios", mids.length === 2 ? "Pivotes" : "Medio campo", mids);
+  push("delanteros", "Delanteros", ids((x) => x.slot.slot === "ST"));
+  push("banda-L", "Banda izquierda", ids((x) => ["DL", "WBL", "ML", "AML"].includes(x.slot.slot)));
+  push("banda-R", "Banda derecha", ids((x) => ["DR", "WBR", "MR", "AMR"].includes(x.slot.slot)));
+  return out;
+}
+
+/**
+ * Elige los roles de cada pareja a la vez: combina las opciones del estilo de
+ * cada hueco, las puntúa con los titulares y con el detector de equilibrio, y
+ * enseña las mejores combinaciones. Así dos huecos iguales (MCD izquierdo y
+ * derecho) no reciben la misma recomendación por separado.
+ */
+export function recommendRoleGroups(tactic: Tactic, lineup: LineupResult, recs: RoleRecommendation[], top = 3): RoleGroupRecommendation[] {
+  const recBySlot = new Map(recs.map((r) => [r.slotId, r]));
+  const slotBy = new Map(lineup.slots.map((x) => [x.slot.id, x]));
+  return roleGroups(lineup).map((g) => {
+    const perSlot = g.slotIds.map((id) => {
+      const r = recBySlot.get(id);
+      const cur = slotBy.get(id)!;
+      const opts = (r?.options ?? []).slice(0, g.slotIds.length >= 4 ? 3 : 4).map((o, i) => ({ role: o.role, score: o.starter ?? o.best?.score ?? 0, bonus: Math.max(0, 1.5 - i * 0.5) }));
+      if (!opts.some((o) => o.role.id === cur.role.id)) opts.push({ role: cur.role, score: cur.starter ? scoreRole(cur.starter.player, cur.role).score * cur.starter.familiarity : 0, bonus: 0 });
+      return opts;
+    });
+    const combos: RoleCombo[] = [];
+    const walk = (i: number, acc: (typeof perSlot)[number]) => {
+      if (i === perSlot.length) {
+        const roles = { ...tactic.roles };
+        acc.forEach((o, k) => { roles[g.slotIds[k]] = o.role.id; });
+        const report = tacticBalance({ ...tactic, roles });
+        const counted = report.issues.filter((x) => !x.intended);
+        const balance = counted.reduce((sum, x) => sum + (RULE_WEIGHT[x.id] ?? BALANCE_WEIGHT[x.level]), 0);
+        const mine = report.issues.filter((x) => x.slots.some((id) => g.slotIds.includes(id)));
+        const score = acc.reduce((sum, o) => sum + o.score, 0) / acc.length;
+        const bonus = acc.reduce((sum, o) => sum + o.bonus, 0);
+        combos.push({
+          roles: acc.map((o) => o.role),
+          score,
+          balance,
+          total: score + balance + bonus,
+          good: mine.filter((x) => x.level === "ok").map((x) => x.text),
+          bad: mine.filter((x) => x.level !== "ok" && x.level !== "tip" && !x.intended).map((x) => ({ level: x.level, text: x.text })),
+          current: acc.every((o, k) => o.role.id === slotBy.get(g.slotIds[k])!.role.id),
+        });
+        return;
+      }
+      for (const o of perSlot[i]) walk(i + 1, [...acc, o]);
+    };
+    walk(0, []);
+    combos.sort((a, b) => b.total - a.total);
+    const current = combos.find((c) => c.current)!;
+    // A + B y B + A son la misma pareja: se enseña la mejor de las dos
+    const seen = new Set<string>();
+    const unique = combos.filter((c) => {
+      const key = c.roles.map((r) => r.id).sort().join("+");
+      return seen.has(key) ? false : (seen.add(key), true);
+    });
+    return { ...g, combos: unique.slice(0, top), current };
+  });
+}
+
+/**
+ * Roles de todas las parejas, elegidas una detrás de otra: cada pareja se
+ * decide con las anteriores ya puestas, para que las dos bandas no acaben en
+ * espejo ni dos unidades repitan el mismo desequilibrio.
+ */
+export function bestGroupRoles(tactic: Tactic, lineup: LineupResult, recs: RoleRecommendation[]): Record<string, string> {
+  let t = tactic;
+  for (const g of recommendRoleGroups(tactic, lineup, recs)) {
+    const cur = recommendRoleGroups(t, lineup, recs, 1).find((x) => x.key === g.key);
+    const best = cur?.combos[0];
+    if (best) t = { ...t, roles: { ...t.roles, ...Object.fromEntries(g.slotIds.map((id, k) => [id, best.roles[k].id])) } };
+  }
+  return t.roles;
 }

@@ -1,7 +1,8 @@
 /** Prueba del motor táctico con una exportación real: npx tsx scripts/check-tactic.ts */
 import { readFileSync } from "node:fs";
 import { parseFmHtml } from "../src/lib/fm/parser";
-import { buildLineup, newTactic, tacticWarnings } from "../src/lib/fm/tactics";
+import { buildLineup, newTactic } from "../src/lib/fm/tactics";
+import { tacticBalance } from "../src/lib/fm/balance";
 import { INSTRUCTIONS, STYLE_BY_ID, instructionFit } from "../src/lib/fm/instructions";
 import { POSITION_LABEL, DUTY_LABEL } from "../src/lib/fm/roles";
 
@@ -16,7 +17,7 @@ for (const s of l.slots) {
   console.log(POSITION_LABEL[s.slot.slot].padEnd(8), `${s.role.es} (${DUTY_LABEL[s.role.duty]})`.padEnd(38), c.player.name.padEnd(20), c.role.score.toFixed(0).padStart(3), `${Math.round(c.familiarity * 100)}%`, "| banquillo:", s.depth.slice(0, 2).map((d) => `${d.player.name} ${d.effective.toFixed(0)}`).join(", "));
 }
 console.log("\nBanquillo:", l.bench.map((b) => `${b.player.name} (${b.bestSlot ? POSITION_LABEL[b.bestSlot.slot.slot] : "-"} ${b.effective.toFixed(0)})`).join(" · "));
-console.log("\nAvisos:", tacticWarnings(t));
+console.log("\nEquilibrio:", tacticBalance(t, { lineup: l }).issues.map((w) => `${w.level} ${w.text}`));
 console.log("\nEncaje instrucciones activas:");
 for (const i of INSTRUCTIONS.filter((i) => t.instructions.includes(i.id))) {
   const f = instructionFit(i, l);

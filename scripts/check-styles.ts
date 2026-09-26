@@ -4,7 +4,8 @@ import { STYLE_PRESETS, STYLE_BY_ID, INSTRUCTION_BY_ID, MENTALITY_BY_ID, migrate
 import { PI_BY_ID, strikerAerial, suggestPlayerInstructions } from "../src/lib/fm/playerInstructions";
 import { FORMATION_BY_ID } from "../src/lib/fm/formations";
 import { ROLE_BY_ID } from "../src/lib/fm/roles";
-import { buildLineup, newTactic, tacticWarnings } from "../src/lib/fm/tactics";
+import { buildLineup, newTactic } from "../src/lib/fm/tactics";
+import { tacticBalance } from "../src/lib/fm/balance";
 import { rankStyles } from "../src/lib/fm/styles";
 import { tacticAdvice, restDefence } from "../src/lib/fm/advice";
 const { players } = parseFmHtml(readFileSync("samples/plantilla-es.html", "utf8"), {});
@@ -27,7 +28,7 @@ for (const s of STYLE_PRESETS) { const t = styleTraits(s.id); const p = profileO
 const t = newTactic("4-2-3-1-dm", "test"); t.styleId = "transiciones";
 const lineup = buildLineup(t, players);
 for (const f of rankStyles(lineup)) console.log(f.style.name.padEnd(40), f.mean?.toFixed(1), f.formationOk ? "" : "form✗", `faltan ${f.missing}/${f.gaps.length}`, f.gaps.filter((g) => !g.ok).map((g) => `${g.req.label} → ${g.detail}`).join(" | "));
-for (const id of ["autobus", "catenaccio", "route-one"]) { t.styleId = id; console.log(id, tacticWarnings(t).map((w) => w.text.slice(0, 60))); }
+for (const id of ["autobus", "catenaccio", "route-one"]) { t.styleId = id; console.log(id, tacticBalance(t).issues.filter((w) => w.level !== "ok").map((w) => `${w.intended ? "≈ " : ""}${w.text.slice(0, 60)}`)); }
 for (const id of ["juego-posicion", "contra-directo", "presion-hombre"]) {
   const tt = newTactic(STYLE_BY_ID[id].formations[0], id); tt.styleId = id; tt.instructions = [...STYLE_BY_ID[id].instructions]; tt.mentality = STYLE_BY_ID[id].mentalityId;
   const lu = buildLineup(tt, players);
