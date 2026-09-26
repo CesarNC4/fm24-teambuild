@@ -6,6 +6,7 @@ import { parseFmHtml } from "@/lib/fm/parser";
 import type { ImportResult, ImportSource } from "@/lib/fm/types";
 import { useAppStore } from "@/lib/store";
 import { coverageText, useLeague } from "@/lib/useLeague";
+import { STAFF_KIND_LABEL, isStaffExport, parseStaffHtml, type StaffKind } from "@/lib/fm/staff";
 
 const FIELD_OPTIONS: { value: string; label: string }[] = [
   ["name", "Nombre"], ["age", "Edad"], ["wage", "Sueldo"], ["value", "Valor de traspaso"],
@@ -52,7 +53,7 @@ export default function ImportPage() {
 
   const exportBackup = () => {
     const s = useAppStore.getState();
-    const data = { version: 1, exportedAt: new Date().toISOString(), players: s.players, imports: s.imports, squads: s.squads, headerOverrides: s.headerOverrides, clubName: s.clubName, tactics: s.tactics, activeTacticId: s.activeTacticId, playerTraits: s.playerTraits, trainingWeek: s.trainingWeek, scoutingBudget: s.scoutingBudget, history: s.history, targets: s.targets, leagueSize: s.leagueSize };
+    const data = { version: 1, exportedAt: new Date().toISOString(), players: s.players, imports: s.imports, squads: s.squads, headerOverrides: s.headerOverrides, clubName: s.clubName, tactics: s.tactics, activeTacticId: s.activeTacticId, playerTraits: s.playerTraits, trainingWeek: s.trainingWeek, scoutingBudget: s.scoutingBudget, history: s.history, targets: s.targets, leagueSize: s.leagueSize, staff: s.staff, staffImport: s.staffImport, clubDna: s.clubDna, createdFocuses: s.createdFocuses };
     const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -71,6 +72,10 @@ export default function ImportPage() {
       setBackupMsg(`No se pudo restaurar: ${(e as Error).message}`);
     }
   };
+  const staff = useAppStore((s) => s.staff);
+  const staffImport = useAppStore((s) => s.staffImport);
+  const importStaff = useAppStore((s) => s.importStaff);
+  const clearStaff = useAppStore((s) => s.clearStaff);
   const savedOverrides = useAppStore((s) => s.headerOverrides);
   const setHeaderOverrides = useAppStore((s) => s.setHeaderOverrides);
 
@@ -85,14 +90,15 @@ export default function ImportPage() {
   const existingMeta = imports[source];
   const canAppend = source === "liga" || source === "ojeados";
 
+  const staffPreview = useMemo(() => (html && isStaffExport(html) ? parseStaffHtml(html) : null), [html]);
   const { result, error } = useMemo<{ result: ImportResult | null; error: string | null }>(() => {
-    if (!html) return { result: null, error: null };
+    if (!html || staffPreview) return { result: null, error: null };
     try {
       return { result: parseFmHtml(html, overrides), error: null };
     } catch (e) {
       return { result: null, error: (e as Error).message };
     }
-  }, [html, overrides]);
+  }, [html, overrides, staffPreview]);
 
   const onFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
@@ -239,6 +245,18 @@ export default function ImportPage() {
             );
           })}
           <div className="border-t border-border pt-2 space-y-1 text-xs">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="font-medium">Empleados (red de ojeo)</div>
+                <div className="text-muted">
+                  {staffImport ? `${staff.filter((m) => !m.gone).length} en el club · ${staffImport.fileName} · ${new Date(staffImport.importedAt).toLocaleString("es")}` : "vacío: exporta la vista de empleados con Juz. Cal, Juz. Pot y Ada"}
+                  {staff.some((m) => m.gone) && ` · ${staff.filter((m) => m.gone).length} ya no están`}
+                </div>
+              </div>
+              {staffImport && <button className="text-xs text-attr-low hover:underline" onClick={clearStaff}>borrar</button>}
+            </div>
+          </div>
+          <div className="border-t border-border pt-2 space-y-1 text-xs">
             <div className="font-medium">Liga calculada</div>
             <p className="text-muted">Tu primer equipo + los rivales marcados como Liga + la búsqueda de liga, sin duplicados: por jugador gana la importación más reciente, y quien ya no sale en la exportación nueva de su club deja de contar para él.</p>
             <p>{league.players.length ? coverageText(league) : "Todavía vacía."}{league.dropped > 0 ? ` · ${league.dropped} bajas detectadas` : ""}</p>
@@ -275,6 +293,43 @@ export default function ImportPage() {
           </div>
         </aside>
       </section>
+
+      {staffPreview && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <div>Exportación de <b>empleados</b>: <b>{staffPreview.length}</b> leídos ({(["ojeador", "analista", "direccion", "entrenador"] as StaffKind[]).map((k) => `${staffPreview.filter((m) => m.kind === k).length} ${k === "ojeador" ? "ojeadores" : k === "analista" ? "analistas" : k === "direccion" ? "de dirección" : "del cuerpo técnico"}`).join(", ")})</div>
+            <button
+              onClick={() => { importStaff(parseStaffHtml(html!), { fileName, importedAt: new Date().toISOString(), count: staffPreview.length }); setSaved(true); }}
+              className="ml-auto px-4 py-1.5 rounded-md bg-accent text-accent-fg font-medium"
+            >
+              Guardar empleados
+            </button>
+            {saved && <span className="text-attr-good">Guardado ✓</span>}
+          </div>
+          <p className="text-xs text-muted">Sustituye a la red guardada: los nuevos entran y los que ya no aparecen quedan como «ya no está» (sus focos se marcan para reasignar). El director deportivo, el secretario técnico y el mánager de cesiones no se asignan a focos.</p>
+          <div className="overflow-auto border border-border rounded-md">
+            <table className="tbl w-full">
+              <thead><tr><th>Nombre</th><th>Empleo</th><th>Uso en la app</th><th>Nac</th><th className="num">Ada</th><th className="num">Juz. Cal</th><th className="num">Juz. Pot</th></tr></thead>
+              <tbody>
+                {staffPreview.map((m) => (
+                  <tr key={m.name}>
+                    <td>{m.name}{staff.length > 0 && !staff.some((x) => x.name === m.name) && <span className="text-attr-good"> · nuevo</span>}</td>
+                    <td>{m.job}</td>
+                    <td className="text-muted">{STAFF_KIND_LABEL[m.kind]}</td>
+                    <td>{m.nationality ?? "—"}</td>
+                    <td className="num">{m.adaptability ?? "–"}</td>
+                    <td className="num">{m.judgeAbility ?? "–"}</td>
+                    <td className="num">{m.judgePotential ?? "–"}</td>
+                  </tr>
+                ))}
+                {staff.filter((x) => !x.gone && !staffPreview.some((m) => m.name === x.name)).map((x) => (
+                  <tr key={"gone-" + x.name} className="text-attr-low"><td>{x.name}</td><td>{x.job}</td><td colSpan={5}>no está en esta exportación: quedará como «ya no está»</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {result && (
         <section className="space-y-4">

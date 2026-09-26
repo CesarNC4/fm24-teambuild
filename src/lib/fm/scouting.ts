@@ -20,6 +20,7 @@ import { personalityTierLevel } from "./personalities";
 import type { AttrKey } from "./attributes";
 import type { Player, PositionSlot } from "./types";
 import { meetsProfile, profileText, tacticPlan, type SignProfile } from "./slotPlan";
+import { leagueLevelPercentile, type LeagueStats } from "./league";
 
 export type NeedLevel = "urgente" | "mejorable" | "sucesion" | "cubierto";
 export const NEED_LABEL: Record<NeedLevel, string> = { urgente: "Urgente", mejorable: "Mejorable", sucesion: "Sucesión", cubierto: "Cubierto" };
@@ -42,12 +43,29 @@ export interface SquadNeed {
   ageBand: "inmediato" | "futuro" | "ambos";
   /** Perfil del plan por hueco: lo que nadie de la plantilla puede hacer en ese hueco. */
   profile?: SignProfile;
+  /** Mejor juvenil (filiales juveniles) para el hueco, si está a tiro del titular. */
+  youth?: { player: Player; effective: number };
+  /** El titular es el eslabón débil del estilo: por qué. */
+  weakLink?: string;
+  /** Percentil del titular en la liga, en su familia de posición. */
+  leaguePct?: number | null;
+}
+
+export interface NeedsOptions {
+  /** Rasgos registrados por jugador (plan por hueco). */
+  traits?: Record<string, string[]>;
+  /** Jugadores de los filiales juveniles, para ver si hay un relevo en casa. */
+  youth?: Player[];
+  /** Liga importada, para el percentil del titular. */
+  league?: LeagueStats | null;
 }
 
 /** Necesidades del primer equipo por hueco de la táctica. */
-export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number | null, traits: Record<string, string[]> = {}): { lineup: LineupResult; needs: SquadNeed[] } {
+export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number | null, opts: NeedsOptions = {}): { lineup: LineupResult; needs: SquadNeed[] } {
   const lineup = buildLineup(tactic, firstTeam);
-  const signs = new Map(tacticPlan(tactic, lineup, firstTeam, traits).signs.map((x) => [x.slotId, x]));
+  const plan = tacticPlan(tactic, lineup, firstTeam, opts.traits ?? {});
+  const signs = new Map(plan.signs.map((x) => [x.slotId, x]));
+  const youthPool = opts.youth ?? [];
   // Suplente real: quien juega ese hueco en el segundo XI (cada jugador cuenta una vez)
   const depth = depthMap(tactic, firstTeam);
   const needs: SquadNeed[] = lineup.slots.map((s, i) => {
@@ -60,6 +78,16 @@ export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number
     const exp = /(\d{4})/.exec(s.starter?.player.contractExpiry ?? "")?.[1];
     const starterAge = s.starter?.player.age ?? 0;
 
+    // Eslabón débil del estilo (plan por hueco): los atributos que el estilo pide a su línea, lejos
+    const styleNeed = plan.plans.find((x) => x.slotId === s.slot.id)?.needs.find((x) => x.fn === "estilo" && x.can === "no");
+    const weakLink = styleNeed ? `${styleNeed.label}: ${styleNeed.checks.filter((c) => !c.ok).map((c) => `${c.label} ${c.value ?? "?"}`).join(", ")} (pide ${styleNeed.checks[0]?.req.min ?? 12})` : undefined;
+    // Relevo en casa: el mejor juvenil que domina el puesto
+    const youth = youthPool
+      .filter((p) => p.isGoalkeeper === (s.slot.slot === "GK") && familiarity(p, s.slot.slot) >= 0.85)
+      .map((p) => ({ player: p, effective: scoreRole(p, s.role).score * familiarity(p, s.slot.slot) }))
+      .sort((a, b) => b.effective - a.effective)[0];
+    const leaguePct = opts.league && s.starter ? leagueLevelPercentile(opts.league, s.starter.player) : null;
+
     if (!s.starter) { level = "urgente"; reasons.push("Sin nadie para el hueco."); }
     else if (!backup || real.tone === "poor") {
       level = "urgente";
@@ -67,20 +95,30 @@ export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number
         : backup.familiarity < 0.85 ? `El suplente real (${backup.player.name}) juega fuera de su puesto.`
         : `El suplente real (${backup.player.name}, ${Math.round(backup.effective)}) está a ${Math.round(st - backup.effective)} puntos del titular.`);
       ageBand = "inmediato";
+    } else if (weakLink) {
+      level = "urgente";
+      reasons.push(`El titular es el eslabón débil del estilo. ${weakLink}.`);
+      ageBand = "inmediato";
     } else if (st < lineup.average - 6) {
       level = "mejorable";
       reasons.push(`El titular (${Math.round(st)}) está ${Math.round(lineup.average - st)} puntos por debajo de la media del XI (${Math.round(lineup.average)}).`);
       ageBand = "inmediato";
+    } else if (leaguePct != null && leaguePct < 40) {
+      level = "mejorable";
+      reasons.push(`El titular está en el percentil ${leaguePct} de la liga en su puesto (por debajo del 40).`);
+      ageBand = "inmediato";
     }
     const youngCover = s.depth.some((d) => (d.player.age ?? 99) <= 26 && d.effective >= st - 8);
-    if (starterAge >= 30 && !youngCover) {
+    const youthReady = !!youth && youth.effective >= st - 8;
+    const youthNear = !!youth && youth.effective >= st - 15;
+    const succession = (starterAge >= 30 && !youngCover) || (gameYear != null && exp != null && Number(exp) <= gameYear);
+    if (starterAge >= 30 && !youngCover) reasons.push(`Titular de ${starterAge} años sin relevo joven en el primer equipo (≤26 a menos de 8 puntos).`);
+    if (gameYear != null && exp != null && Number(exp) <= gameYear) reasons.push(`Contrato del titular vence en ${exp}.`);
+    if (succession && youthReady) reasons.push(`Relevo en casa: ${youth!.player.name} (${youth!.player.age}, ${Math.round(youth!.effective)}) está a menos de 8 puntos. Promociónale antes de fichar.`);
+    else if (succession) {
       if (level === "cubierto") level = "sucesion";
-      reasons.push(`Titular de ${starterAge} años sin relevo joven (≤26 a menos de 8 puntos).`);
+      if (youthNear) reasons.push(`Juvenil a tiro: ${youth!.player.name} (${youth!.player.age}, ${Math.round(youth!.effective)}); si no crece a tiempo, fichar.`);
       ageBand = level === "sucesion" ? "futuro" : "ambos";
-    }
-    if (gameYear != null && exp != null && Number(exp) <= gameYear) {
-      if (level === "cubierto") level = "sucesion";
-      reasons.push(`Contrato del titular vence en ${exp}.`);
     }
     const profile = signs.get(s.slot.id);
     if (profile) {
@@ -93,6 +131,9 @@ export function squadNeeds(tactic: Tactic, firstTeam: Player[], gameYear: number
       upgradeScore: st + 3,
       ageBand,
       ...(profile ? { profile } : {}),
+      ...(youth && youthNear ? { youth } : {}),
+      ...(weakLink ? { weakLink } : {}),
+      leaguePct,
     };
   });
   return { lineup, needs };
@@ -248,176 +289,17 @@ export function evaluateAll(scouted: Player[], needs: SquadNeed[], firstTeam: Pl
   return evals.sort((a, b) => b.score - a.score);
 }
 
-// ---------------------------------------------------------------------------
-// Encargos de ojeo (guía de scouting de Passion4FM)
-// ---------------------------------------------------------------------------
-
-export interface ScoutAssignment {
-  need: SquadNeed;
-  /** "Máxima" (corto plazo, 2+ ojeadores) o "Normal" (≈1 mes, 1 ojeador). */
-  priority: "maxima" | "normal";
-  /** Qué ojeador: el de mejor JPA (nivel actual) o JPP (potencial). */
-  scoutProfile: string;
-  /** Campos del foco de reclutamiento del juego. */
-  filters: { label: string; value: string }[];
-  note: string;
-}
-
-export function suggestAssignments(needs: SquadNeed[], firstTeam: Player[], budget: Budget): ScoutAssignment[] {
-  const wages = firstTeam.map((x) => x.wage).filter((w): w is number => w != null).sort((a, b) => a - b);
-  const maxWage = wages.length ? wages[wages.length - 1] : null;
-  return needs
-    .filter((n) => n.level !== "cubierto")
-    .map((n) => {
-      const starterWage = n.starter?.player.wage ?? null;
-      const wageCap = budget.wage ?? (starterWage != null ? Math.round(starterWage * 1.2) : maxWage);
-      const future = n.ageBand === "futuro";
-      const immediate = n.level === "urgente" || n.level === "mejorable";
-      const filters: ScoutAssignment["filters"] = [
-        { label: "Posición / rol", value: `${POSITION_LABEL_ES[n.slot]} · ${n.role.es} (${n.role.duty === "D" ? "defender" : n.role.duty === "S" ? "apoyo" : n.role.duty === "A" ? "atacar" : n.role.duty})` },
-        { label: "Edad", value: future ? "17-23" : immediate ? "22-29" : "20-27" },
-        { label: "Habilidad actual", value: immediate ? "≥ nivel del primer equipo (≈3 estrellas; mín. 2,5)" : "≥ 2 estrellas y potencial ≥ 4" },
-        { label: "Nivel en la app", value: `≥ ${Math.round(n.targetScore)} para rotar, ≥ ${Math.round(n.upgradeScore)} para mejorar al titular` },
-        { label: "Sueldo", value: wageCap != null ? `≤ ${fmtMoney(wageCap)}${budget.wage == null ? " (titular +20 %)" : ""}` : "según estructura" },
-        { label: "Valor", value: budget.transfer != null ? `≤ ${fmtMoney(budget.transfer)}` : "según presupuesto" },
-        { label: "Situación", value: immediate ? "cualquiera; marca también «contrato termina en 12 meses» y «transferibles» para abaratar" : "contrato termina en 12 meses / transferibles / cedibles" },
-      ];
-      if (future) filters.push({ label: "Personalidad", value: "Determinación ≥ 12; descartar ambición baja y profesionalidad baja" });
-      if (n.profile) {
-        filters.push({ label: "Perfil del plan", value: `${n.profile.needs.join(", ")}: ${profileText(n.profile)}` });
-        const quality = [...n.profile.traitsHave.map((t) => `Tiene «${t.es}»`), ...n.profile.traitsAvoid.map((t) => `No tiene «${t.es}»`)];
-        if (quality.length) filters.push({ label: "Cualidad de jugador", value: quality.join(" · ") });
-      }
-      return {
-        need: n,
-        priority: immediate ? "maxima" : "normal",
-        scoutProfile: immediate ? "el de mayor Juzgar habilidad (JPA); dos ojeadores si es urgente" : "el de mayor Juzgar potencial (JPP); un ojeador, ≈1 mes",
-        filters,
-        note: n.reasons.join(" "),
-      };
-    });
-}
-
-const POSITION_LABEL_ES: Record<PositionSlot, string> = {
-  GK: "POR", DL: "DF (I)", DC: "DF (C)", DR: "DF (D)", WBL: "CR (I)", WBR: "CR (D)", DM: "MC",
-  ML: "ME (I)", MC: "ME (C)", MR: "ME (D)", AML: "MP (I)", AMC: "MP (C)", AMR: "MP (D)", ST: "DL",
-};
-
 /** Consejos generales de la guía, para el panel lateral. */
 export const SCOUTING_TIPS: string[] = [
-  "Ojeadores: Juzgar habilidad y Juzgar potencial ≥15 en un club grande (≥10 en divisiones bajas); Adaptabilidad alta para los que rotan de país.",
+  "Ojeadores: Juz. Cal (juzgar calidad actual) y Juz. Pot (juzgar potencial) ≥15 en un club grande (≥10 en divisiones bajas); Adaptabilidad alta para los que rotan de país.",
   "Reparte perfiles: uno itinerante (adaptabilidad) que abra conocimiento de regiones, uno de cantera (potencial), uno de rivales y uno general (habilidad + potencial).",
-  "Prioridad máxima solo para necesidades a corto plazo (2 ojeadores, semanas); normal para construir conocimiento de una región, empezando meses antes del mercado.",
+  "Prioridad Máxima solo para necesidades a corto plazo (semanas); Estándar para construir conocimiento de una región, empezando meses antes del mercado; Indefinido para los encargos permanentes.",
   "Un informe es fiable a partir de recomendación B+ y con conocimiento alto; con atributos en rango, «ojear a fondo» antes de ofertar.",
   "Truco de presupuesto: sube el alcance a Mundial sin avanzar el tiempo, haz las búsquedas y listas, y vuelve al alcance barato antes del cobro mensual.",
   "Conocimiento: segunda nacionalidad del entrenador en la región objetivo (50-80 % de conocimiento) y clubes afiliados que compartan ojeo.",
   "Antes de buscar, mira la media de atributos de tu liga por posición y filtra por encima de ella; ordena la búsqueda por valor para no pagar de más.",
   "Pide al director deportivo recomendaciones por posición y rol (pestaña Traspasos) y revisa las estadísticas de tu liga y de la división inferior: rinden y son asequibles.",
 ];
-
-// ---------------------------------------------------------------------------
-// Encargos permanentes (no dependen de una necesidad concreta)
-// ---------------------------------------------------------------------------
-
-export interface StandingAssignment {
-  id: string;
-  title: string;
-  goal: string;
-  scoutProfile: string;
-  filters: { label: string; value: string }[];
-}
-
-/**
- * Encargos "en curso" que la guía recomienda tener siempre: oportunidades para
- * el primer equipo, jóvenes con potencial, cantera, agentes libres, cesiones y
- * conocimiento de regiones. Los umbrales salen de la plantilla actual.
- */
-export function standingAssignments(needs: SquadNeed[], firstTeam: Player[], budget: Budget): StandingAssignment[] {
-  const wages = firstTeam.map((x) => x.wage).filter((w): w is number => w != null).sort((a, b) => a - b);
-  const medianWage = wages.length ? wages[Math.floor(wages.length / 2)] : null;
-  const maxWage = wages.length ? wages[wages.length - 1] : null;
-  const starters = needs.map((n) => n.starter?.effective ?? 0).filter((v) => v > 0);
-  const avg = starters.length ? starters.reduce((a, b) => a + b, 0) / starters.length : 65;
-  const weakest = needs.reduce<SquadNeed | null>((w, n) => (!w || (n.starter?.effective ?? 0) < (w.starter?.effective ?? 0) ? n : w), null);
-  const wageCap = budget.wage ?? maxWage;
-  const wageTxt = wageCap != null ? `≤ ${fmtMoney(wageCap)}` : "dentro de la estructura";
-  const valueTxt = budget.transfer != null ? `≤ ${fmtMoney(budget.transfer)}` : "según presupuesto";
-  const aging = needs.filter((n) => (n.starter?.player.age ?? 0) >= 28).map((n) => POSITION_LABEL_ES[n.slot]).join(", ");
-  const short = needs.filter((n) => n.level === "urgente" || n.level === "mejorable").map((n) => POSITION_LABEL_ES[n.slot]).join(", ");
-  return [
-    {
-      id: "primer-equipo",
-      title: "Oportunidades para el primer equipo",
-      goal: "Que aparezca cualquier jugador que mejore un hueco aunque hoy no sea una necesidad.",
-      scoutProfile: "ojeador general (habilidad y potencial altos), prioridad normal, en curso",
-      filters: [
-        { label: "Posición", value: "cualquiera" },
-        { label: "Edad", value: "22-29" },
-        { label: "Habilidad actual", value: `≥ nivel del primer equipo (media de tus titulares ≈ ${Math.round(avg)} en la app; ≈3 estrellas)` },
-        { label: "Situación", value: "contrato termina en 12 meses, transferibles, cláusula de rescisión" },
-        { label: "Sueldo / valor", value: `${wageTxt} · ${valueTxt}` },
-      ],
-    },
-    {
-      id: "futuro",
-      title: "Jóvenes con potencial (futuro)",
-      goal: "Relevos a 2-3 años para los puestos con titulares de 28+ y jugadores que se revaloricen.",
-      scoutProfile: "ojeador de cantera (Juzgar potencial ≥15), prioridad normal, en curso",
-      filters: [
-        { label: "Posición", value: aging || "cualquiera" },
-        { label: "Edad", value: "17-21" },
-        { label: "Potencial", value: "≥ 4 estrellas; habilidad actual ≥ 2" },
-        { label: "Personalidad", value: "Determinación ≥ 12; sin ambición ni profesionalidad bajas" },
-        { label: "Sueldo", value: medianWage != null ? `≤ ${fmtMoney(medianWage)} (mediana de la plantilla)` : "bajo" },
-      ],
-    },
-    {
-      id: "cantera",
-      title: "Captación juvenil (15-17)",
-      goal: "Fichajes baratos para el Sub-18 antes de que firmen su primer contrato profesional.",
-      scoutProfile: "ojeador de cantera con conocimiento del país; prioridad normal, en curso; regiones con buena captación",
-      filters: [
-        { label: "Edad", value: "15-17" },
-        { label: "Potencial", value: "≥ 4 estrellas" },
-        { label: "Contrato", value: "juvenil o sin contrato; ojo al permiso de trabajo y a la edad mínima para fichar extranjeros" },
-        { label: "Personalidad", value: "Determinación y profesionalidad altas; las estrellas de potencial engañan más a esta edad" },
-      ],
-    },
-    {
-      id: "libres",
-      title: "Agentes libres y fin de contrato",
-      goal: "Fichar sin traspaso: contratos que terminan en 6 meses (precontrato) o ya sin club.",
-      scoutProfile: "ojeador general; búsqueda de jugadores con filtro de contrato, revisar cada mes",
-      filters: [
-        { label: "Situación", value: "sin club o contrato termina en 6 meses; en clubes grandes, también «queda 1 año» + sondeo para inquietarlo" },
-        { label: "Edad", value: "≤ 30 (31+ solo contrato de 1 año)" },
-        { label: "Nivel", value: weakest?.starter ? `≥ ${Math.round(weakest.targetScore)} (rotación en ${weakest.role.es}, tu hueco más flojo)` : "≥ rotación" },
-        { label: "Sueldo", value: "es donde se lo gastan: fija tope antes de hablar con el agente" },
-      ],
-    },
-    {
-      id: "cesiones",
-      title: "Mercado de cesiones",
-      goal: "Cubrir huecos urgentes sin traspaso: cedibles de clubes de categoría superior o del club afiliado senior.",
-      scoutProfile: "ojeador general; filtro «cedible» en clubes de divisiones superiores; pedir a la directiva un afiliado senior si no hay",
-      filters: [
-        { label: "Posición", value: short || "las que se queden cortas por lesiones" },
-        { label: "Edad", value: "≤ 24 (el club de origen cede a los que necesitan minutos)" },
-        { label: "Condiciones", value: "sin opción obligatoria; aporte de sueldo parcial; opción de compra si es joven" },
-      ],
-    },
-    {
-      id: "conocimiento",
-      title: "Conocimiento de regiones",
-      goal: "Abrir mercados donde el conocimiento es bajo para que las búsquedas muestren jugadores que hoy no ves.",
-      scoutProfile: "ojeador itinerante (Adaptabilidad alta), un país o región por encargo, varios meses",
-      filters: [
-        { label: "Región", value: "donde el conocimiento sea «mínimo» o «nominal»: Sudamérica, Escandinavia y Europa del Este suelen dar buena relación calidad-precio" },
-        { label: "Complemento", value: "segunda nacionalidad del entrenador en la región y clubes afiliados que compartan ojeo" },
-      ],
-    },
-  ];
-}
 
 /**
  * Sobrepagados: sueldo muy por encima de lo que aportan (guía de finanzas:

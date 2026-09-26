@@ -10,6 +10,7 @@ import { useAppStore } from "@/lib/store";
 import { developmentVerdict, formatDeltas, monthsUntilAgeLimit, progressSince, projectAttr, type History } from "@/lib/fm/history";
 import { estimateGameYear } from "@/lib/fm/youth";
 import { ScoreBadge } from "@/components/AttrCell";
+import { dnaCheck, dnaSummary, type DnaResult } from "@/lib/fm/recruitment";
 
 const DEST_CLASS: Record<Destination, string> = {
   "primer-equipo": "bg-attr-elite/15 text-attr-elite",
@@ -26,6 +27,7 @@ export default function YouthPage() {
   const hydrated = useAppStore((s) => s.hydrated);
   const tactics = useAppStore((s) => s.tactics);
   const activeTacticId = useAppStore((s) => s.activeTacticId);
+  const clubDna = useAppStore((s) => s.clubDna);
   const [filter, setFilter] = useState<string>("todos");
   const [open, setOpen] = useState<string | null>(null);
 
@@ -33,7 +35,10 @@ export default function YouthPage() {
   const filiales = squads.filter((q) => q.kind === "filial");
   const all = useMemo(() => assessAllYouth(players, squads, tactic), [players, squads, tactic]);
   const gameYear = useMemo(() => estimateGameYear(players.plantilla ?? []), [players.plantilla]);
-  const list = filter === "todos" ? all : all.filter((a) => (filter === "alertas" ? a.alerts.length > 0 : a.squad?.id === filter));
+  // ADN del club en los juveniles propios: personalidad, pierna mala y altura (no la edad, el sueldo ni la cláusula)
+  const dnaByUid = useMemo(() => new Map<string, DnaResult>(all.map((a) => [a.player.uid, dnaCheck(a.player, clubDna, [], null, null, true)])), [all, clubDna]);
+  const dnaActive = dnaSummary(clubDna, []).length > 0;
+  const list = filter === "todos" ? all : all.filter((a) => (filter === "alertas" ? a.alerts.length > 0 : filter === "adn" ? !dnaByUid.get(a.player.uid)?.ok : a.squad?.id === filter));
   const coverage = useMemo(() => positionCoverage(all), [all]);
 
   if (hydrated && (players.plantilla?.length ?? 0) === 0) {
@@ -51,7 +56,7 @@ export default function YouthPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Juveniles</h1>
         <div className="flex gap-1 text-sm flex-wrap">
-          {[{ id: "todos", name: "Todos" }, ...squads.filter((q) => q.kind === "primer" || q.kind === "filial").map((q) => ({ id: q.id, name: q.name })), { id: "alertas", name: "Con alertas" }].map((f) => (
+          {[{ id: "todos", name: "Todos" }, ...squads.filter((q) => q.kind === "primer" || q.kind === "filial").map((q) => ({ id: q.id, name: q.name })), { id: "alertas", name: "Con alertas" }, ...(dnaActive ? [{ id: "adn", name: "Fuera del ADN" }] : [])].map((f) => (
             <button key={f.id} onClick={() => setFilter(f.id)} className={`px-3 py-1 rounded border ${filter === f.id ? "bg-accent text-accent-fg border-accent" : "border-border hover:bg-surface-2"}`}>
               {f.name}
             </button>
@@ -86,7 +91,7 @@ export default function YouthPage() {
                   const p = a.player;
                   const isOpen = open === p.uid;
                   return (
-                    <Row key={p.uid} a={a} history={history} gameYear={gameYear} isOpen={isOpen} toggle={() => setOpen(isOpen ? null : p.uid)} />
+                    <Row key={p.uid} a={a} history={history} gameYear={gameYear} dna={dnaByUid.get(p.uid) ?? null} isOpen={isOpen} toggle={() => setOpen(isOpen ? null : p.uid)} />
                   );
                 })}
               </tbody>
@@ -126,7 +131,7 @@ export default function YouthPage() {
   );
 }
 
-function Row({ a, history, gameYear, isOpen, toggle }: { a: YouthAssessment; history: History; gameYear: number | null; isOpen: boolean; toggle: () => void }) {
+function Row({ a, history, gameYear, dna, isOpen, toggle }: { a: YouthAssessment; history: History; gameYear: number | null; dna: DnaResult | null; isOpen: boolean; toggle: () => void }) {
   const p = a.player;
   const monthsLeft = monthsUntilAgeLimit(p.birthDate, p.age, a.squad?.kind === "filial" ? a.squad.maxAge : null, gameYear);
   const objectives = (a.training.focus[0]?.detail ?? []).filter((d) => d.have != null && d.have < d.target).map((d) => projectAttr(history, p.uid, d.key, d.target)).filter((x): x is NonNullable<typeof x> => !!x);
@@ -141,6 +146,7 @@ function Row({ a, history, gameYear, isOpen, toggle }: { a: YouthAssessment; his
           {p.name}
           {a.alerts.length > 0 && <span className="text-attr-mid" title={a.alerts.join("\n")}> ⚠</span>}
           {a.onLoan && <span className="text-muted text-[10px]"> cedido</span>}
+          {dna && !dna.ok && <span className="text-[10px] text-attr-mid" title={`Fuera del ADN: ${dna.misses.join(", ")}`}> ADN✗</span>}
         </td>
         <td className="num">{p.age ?? "–"}</td>
         <td className="text-xs whitespace-nowrap">{a.squad?.name ?? "—"}</td>

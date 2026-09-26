@@ -8,6 +8,8 @@ import { migrateTactic, type Tactic } from "./fm/tactics";
 import { migrateInstructions } from "./fm/instructions";
 import { appendSnapshots, type History } from "./fm/history";
 import type { TrainingWeekSettings } from "./fm/training";
+import { mergeStaff, type StaffMember } from "./fm/staff";
+import { DEFAULT_DNA, type ClubDna, type CreatedFocus } from "./fm/recruitment";
 
 /** Almacenamiento en IndexedDB (mucha más capacidad que localStorage). */
 const idbStorage: StateStorage = {
@@ -65,6 +67,13 @@ interface AppState {
   targets: Record<string, TargetEntry>;
   /** Número de clubes de tu liga, para el aviso de cobertura de la liga calculada. */
   leagueSize: number;
+  /** Empleados del club (exportación de empleados); los que se van quedan marcados. */
+  staff: StaffMember[];
+  staffImport: ImportMeta | null;
+  /** ADN del club: filtros de fichaje propios. */
+  clubDna: ClubDna;
+  /** Focos de contratación que ya creaste en el juego (clave → ojeador asignado). */
+  createdFocuses: Record<string, CreatedFocus>;
 
   setPlayers: (source: ImportSource, players: Player[], meta: ImportMeta) => void;
   clearSource: (source: ImportSource) => void;
@@ -83,6 +92,11 @@ interface AppState {
   setScoutingBudget: (b: { transfer: number | null; wage: number | null }) => void;
   setTarget: (uid: string, entry: TargetEntry | null) => void;
   setLeagueSize: (n: number) => void;
+  /** Importa la red de empleados fusionando por nombre con la guardada. */
+  importStaff: (members: StaffMember[], meta: ImportMeta) => void;
+  clearStaff: () => void;
+  setClubDna: (dna: ClubDna) => void;
+  setCreatedFocus: (key: string, focus: CreatedFocus | null) => void;
   /** Restaura una copia de seguridad (sustituye todo lo persistido). */
   restoreBackup: (data: Partial<PersistedState>) => void;
 }
@@ -104,6 +118,10 @@ export const useAppStore = create<AppState>()(
       history: {},
       targets: {},
       leagueSize: 20,
+      staff: [],
+      staffImport: null,
+      clubDna: DEFAULT_DNA,
+      createdFocuses: {},
 
       setPlayers: (source, players, meta) =>
         set((s) => ({
@@ -160,6 +178,15 @@ export const useAppStore = create<AppState>()(
           return { targets };
         }),
       setLeagueSize: (leagueSize) => set({ leagueSize }),
+      importStaff: (members, meta) => set((s) => ({ staff: mergeStaff(s.staff, members), staffImport: meta })),
+      clearStaff: () => set({ staff: [], staffImport: null }),
+      setClubDna: (clubDna) => set({ clubDna }),
+      setCreatedFocus: (key, focus) =>
+        set((s) => {
+          const createdFocuses = { ...s.createdFocuses };
+          if (focus) createdFocuses[key] = focus; else delete createdFocuses[key];
+          return { createdFocuses };
+        }),
       restoreBackup: (data) => set((s) => ({ ...s, ...normalizePersisted(data), hydrated: true })),
     }),
     {
@@ -179,6 +206,10 @@ export const useAppStore = create<AppState>()(
         history: s.history,
         targets: s.targets,
         leagueSize: s.leagueSize,
+        staff: s.staff,
+        staffImport: s.staffImport,
+        clubDna: s.clubDna,
+        createdFocuses: s.createdFocuses,
       }),
       // Datos guardados antes de que existieran los filiales o la liga: se completan las fuentes fijas.
       merge: (persisted, current) => ({ ...current, ...normalizePersisted((persisted ?? {}) as Partial<PersistedState>) }),
@@ -190,7 +221,7 @@ export const useAppStore = create<AppState>()(
 );
 
 /** Estado que se persiste (y que exporta la copia de seguridad). */
-export type PersistedState = Pick<AppState, "players" | "imports" | "squads" | "headerOverrides" | "clubName" | "tactics" | "activeTacticId" | "playerTraits" | "trainingWeek" | "scoutingBudget" | "history" | "targets" | "leagueSize">;
+export type PersistedState = Pick<AppState, "players" | "imports" | "squads" | "headerOverrides" | "clubName" | "tactics" | "activeTacticId" | "playerTraits" | "trainingWeek" | "scoutingBudget" | "history" | "targets" | "leagueSize" | "staff" | "staffImport" | "clubDna" | "createdFocuses">;
 
 /** Completa fuentes fijas y campos nuevos en datos guardados por versiones anteriores. */
 function normalizePersisted(p: Partial<PersistedState>): Partial<PersistedState> {
@@ -204,7 +235,7 @@ function normalizePersisted(p: Partial<PersistedState>): Partial<PersistedState>
   // Instrucciones que ya no existen en FM24 (trampa del fuera de juego, marcaje estricto, anchura defensiva)
   // Fijados por plantilla y roles que ya no caben en su hueco (Organizador en banda en MP banda → Extremo inverso)
   const tactics = (p.tactics ?? []).map((t) => migrateTactic({ ...t, instructions: migrateInstructions(t.instructions ?? []) }));
-  return { ...p, squads, players, imports, tactics, history: p.history ?? {}, targets: p.targets ?? {}, leagueSize: p.leagueSize ?? 20 };
+  return { ...p, squads, players, imports, tactics, history: p.history ?? {}, targets: p.targets ?? {}, leagueSize: p.leagueSize ?? 20, staff: p.staff ?? [], staffImport: p.staffImport ?? null, clubDna: { ...DEFAULT_DNA, ...(p.clubDna ?? {}) }, createdFocuses: p.createdFocuses ?? {} };
 }
 
 function mostCommonClub(players: Player[]): string | null {

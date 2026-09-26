@@ -5,7 +5,10 @@ import { useMemo, useState } from "react";
 import { ATTR_BY_KEY } from "@/lib/fm/attributes";
 import { POSITION_LABEL } from "@/lib/fm/roles";
 import { TIER_LABEL, type PersonalityTierLevel } from "@/lib/fm/personalities";
-import { NEED_LABEL, SCOUTING_TIPS, VERDICT_LABEL, evaluateAll, fmtMoney, overpaidPlayers, squadNeeds, standingAssignments, suggestAssignments, type CandidateEval, type NeedLevel, type Verdict } from "@/lib/fm/scouting";
+import { NEED_LABEL, SCOUTING_TIPS, VERDICT_LABEL, evaluateAll, fmtMoney, overpaidPlayers, squadNeeds, type CandidateEval, type NeedLevel, type Verdict } from "@/lib/fm/scouting";
+import { buildFocuses, dnaCheck, evolutionNeeds, proposedTargets, staffLoad, styleDnaRules, type DnaResult } from "@/lib/fm/recruitment";
+import { youthSquadIds } from "@/lib/fm/tactics";
+import { DnaPanel, FocusCard, StaffNetwork } from "@/components/Recruitment";
 import { estimateGameYear } from "@/lib/fm/youth";
 import { buildLeagueStats, leagueLevelPercentile } from "@/lib/fm/league";
 import { useAppStore, type TargetEntry } from "@/lib/store";
@@ -36,6 +39,13 @@ export default function ScoutingPage() {
   const targets = useAppStore((s) => s.targets);
   const setTarget = useAppStore((s) => s.setTarget);
   const playerTraits = useAppStore((s) => s.playerTraits);
+  const squads = useAppStore((s) => s.squads);
+  const staff = useAppStore((s) => s.staff);
+  const clubDna = useAppStore((s) => s.clubDna);
+  const setClubDna = useAppStore((s) => s.setClubDna);
+  const createdFocuses = useAppStore((s) => s.createdFocuses);
+  const setCreatedFocus = useAppStore((s) => s.setCreatedFocus);
+  const [onlyDna, setOnlyDna] = useState(false);
   const [showTargets, setShowTargets] = useState(true);
   const [slotFilter, setSlotFilter] = useState<string>("todos");
   const [hideDiscarded, setHideDiscarded] = useState(true);
@@ -50,14 +60,21 @@ export default function ScoutingPage() {
   const targetList = useMemo(() => Object.entries(targets).map(([uid, t]) => ({ uid, t, current: scoutedByUid.get(uid) ?? null })).sort((a, b) => a.t.addedAt.localeCompare(b.t.addedAt)), [targets, scoutedByUid]);
   const tactic = tactics.find((t) => t.id === activeTacticId) ?? tactics[0] ?? null;
   const gameYear = useMemo(() => estimateGameYear(firstTeam), [firstTeam]);
-  const needsRes = useMemo(() => (tactic && firstTeam.length ? squadNeeds(tactic, firstTeam, gameYear, playerTraits) : null), [tactic, firstTeam, gameYear, playerTraits]);
+  const youthPlayers = useMemo(() => youthSquadIds(squads).flatMap((id) => players[id] ?? []), [squads, players]);
+  const needsRes = useMemo(() => (tactic && firstTeam.length ? squadNeeds(tactic, firstTeam, gameYear, { traits: playerTraits, youth: youthPlayers, league }) : null), [tactic, firstTeam, gameYear, playerTraits, youthPlayers, league]);
   const evals = useMemo(() => (needsRes ? evaluateAll(scouted, needsRes.needs, firstTeam, budget, gameYear) : []), [needsRes, scouted, firstTeam, budget, gameYear]);
-  const assignments = useMemo(() => (needsRes ? suggestAssignments(needsRes.needs, firstTeam, budget) : []), [needsRes, firstTeam, budget]);
   const [showAssignments, setShowAssignments] = useState(true);
-  const standing = useMemo(() => (needsRes ? standingAssignments(needsRes.needs, firstTeam, budget) : []), [needsRes, firstTeam, budget]);
+  const dnaRules = useMemo(() => styleDnaRules(tactic), [tactic]);
+  const maxWage = useMemo(() => Math.max(0, ...firstTeam.map((p) => p.wage ?? 0)) || null, [firstTeam]);
+  const dnaByUid = useMemo(() => new Map<string, DnaResult>(evals.map((e) => [e.player.uid, dnaCheck(e.player, clubDna, dnaRules, e.fit?.need.slot ?? null, maxWage)])), [evals, clubDna, dnaRules, maxWage]);
+  const focuses = useMemo(() => (needsRes && tactic ? buildFocuses(needsRes.needs, { tactic, staff, dna: clubDna, budget, firstTeam, created: createdFocuses }) : []), [needsRes, tactic, staff, clubDna, budget, firstTeam, createdFocuses]);
+  const load = useMemo(() => staffLoad(focuses), [focuses]);
+  const proposals = useMemo(() => proposedTargets(evals, clubDna, dnaRules, maxWage, new Set(Object.keys(targets))), [evals, clubDna, dnaRules, maxWage, targets]);
+  const evolution = useMemo(() => evolutionNeeds(tactic, needsRes?.lineup ?? null), [tactic, needsRes]);
+  const track = (e: CandidateEval) => setTarget(e.player.uid, { status: "seguir", note: "", addedAt: new Date().toISOString(), snapshot: { name: e.player.name, club: e.player.club, value: e.player.value, wage: e.player.wage, contractExpiry: e.player.contractExpiry, age: e.player.age } });
   const overpaid = useMemo(() => (needsRes ? overpaidPlayers(firstTeam, needsRes.lineup) : []), [needsRes, firstTeam]);
 
-  const list = evals.filter((e) => (!hideDiscarded || e.verdict !== "descartar") && (slotFilter === "todos" || e.fit?.need.slotId === slotFilter) && (maxAge === "" || (e.player.age ?? 0) <= maxAge));
+  const list = evals.filter((e) => (!onlyDna || dnaByUid.get(e.player.uid)?.ok) && (!hideDiscarded || e.verdict !== "descartar") && (slotFilter === "todos" || e.fit?.need.slotId === slotFilter) && (maxAge === "" || (e.player.age ?? 0) <= maxAge));
 
   if (hydrated && firstTeam.length === 0) {
     return <div className="text-sm text-muted">No hay plantilla importada. <Link href="/" className="text-accent underline">Importa el primer equipo</Link> primero.</div>;
@@ -99,66 +116,60 @@ export default function ScoutingPage() {
                   {n.backup ? ` · sup. real ${n.backup.player.name} (${Math.round(n.backup.effective)})` : " · sin suplente"}
                 </div>
                 {n.profile && <div className="text-attr-low mt-0.5">Plan: {n.profile.needs.join(", ").toLowerCase()} ({profileText(n.profile)})</div>}
+                {n.weakLink && <div className="text-attr-low mt-0.5">Eslabón débil del estilo</div>}
+                {n.youth && <div className="text-attr-good mt-0.5">🎓 {n.youth.player.name} ({n.youth.player.age}, {Math.round(n.youth.effective)}) a tiro</div>}
+                {n.leaguePct != null && <div className="text-muted">Liga: percentil {n.leaguePct}</div>}
                 <div className="text-muted">Busca ≥{Math.round(n.targetScore)} rotación · ≥{Math.round(n.upgradeScore)} mejora · {n.ageBand === "futuro" ? "joven" : n.ageBand === "inmediato" ? "inmediato" : "cualquier edad"}</div>
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted">Urgente: sin suplente real en el segundo XI o con él en rojo en el mapa de profundidad. Mejorable: titular 6 puntos por debajo de la media del XI, o un perfil del plan por hueco que nadie de la plantilla cubre. Sucesión: titular de 30+ sin relevo ≤26 o con contrato que vence. Clic en un hueco para filtrar candidatos.</p>
+          <p className="text-xs text-muted">Urgente: sin suplente real en el segundo XI (o en rojo en el mapa de profundidad), o el titular es el eslabón débil del estilo. Mejorable: titular 6 puntos por debajo de la media del XI, por debajo del percentil 40 de la liga, o un perfil del plan por hueco que nadie de la plantilla cubre. Sucesión: titular de 30+ sin relevo o con contrato que vence; si un juvenil está a menos de 8 puntos, no hace falta fichar. Clic en un hueco para filtrar candidatos.</p>
+        </section>
+      )}
+
+      {needsRes && evolution.length > 0 && (
+        <section className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
+          <h2 className="font-semibold text-sm">Evolución del estilo</h2>
+          {evolution.map((x) => (
+            <p key={x.style.id}><b>{x.style.name}</b>: te falta {x.missing.map((g) => `${g.req.label} (${g.detail})`).join("; ")}.</p>
+          ))}
         </section>
       )}
 
       {needsRes && (
         <section className="space-y-2">
           <div className="flex items-center gap-3">
-            <h2 className="font-semibold text-sm">Encargos para los ojeadores</h2>
+            <h2 className="font-semibold text-sm">Contratación: ADN, propuestos y focos</h2>
             <button className="text-xs underline text-muted" onClick={() => setShowAssignments(!showAssignments)}>{showAssignments ? "ocultar" : "mostrar"}</button>
           </div>
           {showAssignments && (
-            <div className="grid lg:grid-cols-[1fr_300px] gap-3">
-              <div className="space-y-2">
-                <h3 className="text-xs font-medium text-muted">Por necesidad ({assignments.length}{assignments.length === 0 ? ": ningún hueco descubierto" : ""})</h3>
-                <div className="grid md:grid-cols-2 gap-2">
-                {assignments.map((a) => (
-                  <div key={a.need.slotId} className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
-                    <div className="flex justify-between gap-2">
-                      <span className="font-medium">{POSITION_LABEL[a.need.slot]} · {a.need.role.es}</span>
-                      <span className={a.priority === "maxima" ? "text-attr-low" : "text-muted"}>prioridad {a.priority === "maxima" ? "máxima" : "normal"} · {NEED_LABEL[a.need.level]}</span>
+            <div className="grid lg:grid-cols-[1fr_320px] gap-3">
+              <div className="space-y-3">
+                <DnaPanel dna={clubDna} rules={dnaRules} onChange={setClubDna} />
+                <div className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
+                  <h3 className="font-medium text-sm">Objetivos propuestos ({proposals.length})</h3>
+                  <p className="text-muted">Ojeados que mejoran al titular en un hueco urgente y cumplen el ADN. No entran solos en Seguimiento: pásalos con un clic.</p>
+                  {proposals.length === 0 && <p className="text-muted">Ninguno ahora mismo{scouted.length === 0 ? ": no hay ojeados importados" : ""}.</p>}
+                  {proposals.map(({ e }) => (
+                    <div key={e.player.uid} className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{e.player.name}</span>
+                      <span className="text-muted">{e.player.age} · {e.player.club ?? "—"} · {POSITION_LABEL[e.fit!.need.slot]} {e.fit!.need.role.es} · {Math.round(e.fit!.effective)} frente a {Math.round(e.fit!.need.starter?.effective ?? 0)} del titular{e.player.value != null ? ` · ${fmtMoney(e.player.value)}` : ""}</span>
+                      <button className="ml-auto text-[10px] px-1.5 rounded border border-border hover:bg-surface-2" onClick={() => track(e)}>pasar a seguimiento</button>
                     </div>
-                    <p className="text-muted">{a.note}</p>
-                    <table className="w-full">
-                      <tbody>
-                        {a.filters.map((f) => (
-                          <tr key={f.label}><td className="text-muted pr-2 align-top whitespace-nowrap">{f.label}</td><td>{f.value}</td></tr>
-                        ))}
-                        <tr><td className="text-muted pr-2 align-top whitespace-nowrap">Ojeador</td><td>{a.scoutProfile}</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
+                  ))}
                 </div>
-                <h3 className="text-xs font-medium text-muted pt-1">Permanentes (siempre activos, un ojeador cada uno)</h3>
+                <h3 className="text-xs font-medium text-muted">Focos de contratación ({focuses.length}): en el juego, Ojeo → Foco de contratación → Nuevo, y copia los campos en este orden</h3>
                 <div className="grid md:grid-cols-2 gap-2">
-                  {standing.map((a) => (
-                    <div key={a.id} className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
-                      <div className="font-medium">{a.title}</div>
-                      <p className="text-muted">{a.goal}</p>
-                      <table className="w-full">
-                        <tbody>
-                          {a.filters.map((f) => (
-                            <tr key={f.label}><td className="text-muted pr-2 align-top whitespace-nowrap">{f.label}</td><td>{f.value}</td></tr>
-                          ))}
-                          <tr><td className="text-muted pr-2 align-top whitespace-nowrap">Ojeador</td><td>{a.scoutProfile}</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
+                  {focuses.map((f) => (
+                    <FocusCard key={f.key} f={f} onCreated={(c) => setCreatedFocus(f.key, c)} onRemove={() => setCreatedFocus(f.key, null)} />
                   ))}
                 </div>
               </div>
               <aside className="space-y-3 self-start">
+                <StaffNetwork staff={staff} load={load} />
                 <div className="bg-surface border border-border rounded-md p-3 text-xs space-y-1.5">
                   <h3 className="font-medium text-sm">Cómo montar el ojeo</h3>
                   {SCOUTING_TIPS.map((t, i) => <p key={i}>· {t}</p>)}
-                  <p className="text-muted">En el juego: Ojeo → Encargos → Nuevo foco de reclutamiento, y copia estos filtros. El «Nivel en la app» es para comprobar aquí lo que traiga el informe.</p>
                 </div>
                 <div className="bg-surface border border-border rounded-md p-3 text-xs space-y-1">
                   <h3 className="font-medium text-sm">Sueldos por encima de lo que aportan</h3>
@@ -225,6 +236,7 @@ export default function ScoutingPage() {
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <h2 className="font-semibold">Candidatos ({list.length}{scouted.length !== list.length ? ` de ${scouted.length}` : ""})</h2>
           <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={hideDiscarded} onChange={(e) => setHideDiscarded(e.target.checked)} /> ocultar descartados</label>
+          <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={onlyDna} onChange={(e) => setOnlyDna(e.target.checked)} /> solo los que cumplen el ADN</label>
           <label className="text-xs">edad máx. <input className="bg-surface border border-border rounded px-1 w-12" value={maxAge} onChange={(e) => setMaxAge(e.target.value ? Number(e.target.value) : "")} /></label>
           {slotFilter !== "todos" && <button className="text-xs underline" onClick={() => setSlotFilter("todos")}>quitar filtro de hueco</button>}
         </div>
@@ -247,7 +259,8 @@ export default function ScoutingPage() {
                     e={e}
                     leaguePct={league ? leagueLevelPercentile(league, e.player) : undefined}
                     target={targets[e.player.uid] ?? null}
-                    onTrack={() => setTarget(e.player.uid, { status: "seguir", note: "", addedAt: new Date().toISOString(), snapshot: { name: e.player.name, club: e.player.club, value: e.player.value, wage: e.player.wage, contractExpiry: e.player.contractExpiry, age: e.player.age } })}
+                    dna={dnaByUid.get(e.player.uid) ?? null}
+                    onTrack={() => track(e)}
                     isOpen={open === e.player.uid}
                     toggle={() => setOpen(open === e.player.uid ? null : e.player.uid)}
                   />
@@ -265,14 +278,14 @@ export default function ScoutingPage() {
   );
 }
 
-function Row({ e, leaguePct, target, onTrack, isOpen, toggle }: { e: CandidateEval; leaguePct?: number | null; target: TargetEntry | null; onTrack: () => void; isOpen: boolean; toggle: () => void }) {
+function Row({ e, leaguePct, target, dna, onTrack, isOpen, toggle }: { e: CandidateEval; leaguePct?: number | null; target: TargetEntry | null; dna: DnaResult | null; onTrack: () => void; isOpen: boolean; toggle: () => void }) {
   const p = e.player;
   const tier = e.personalityTier as PersonalityTierLevel;
   const det = p.attrs.Det?.value ?? null;
   return (
     <>
       <tr className="cursor-pointer hover:bg-surface-2" onClick={toggle}>
-        <td className="font-medium whitespace-nowrap">{p.name}{e.red.length > 0 && <span className="text-attr-low" title={e.red.join("\n")}> ✕</span>}{e.warnings.length > 0 && e.red.length === 0 && <span className="text-attr-mid" title={e.warnings.join("\n")}> ⚠</span>}</td>
+        <td className="font-medium whitespace-nowrap">{p.name}{e.red.length > 0 && <span className="text-attr-low" title={e.red.join("\n")}> ✕</span>}{e.warnings.length > 0 && e.red.length === 0 && <span className="text-attr-mid" title={e.warnings.join("\n")}> ⚠</span>}{dna && !dna.ok && <span className="text-[10px] text-attr-mid" title={`Fuera del ADN: ${dna.misses.join(", ")}`}> ADN✗</span>}</td>
         <td className="num">{p.age ?? "–"}</td>
         <td className="text-xs whitespace-nowrap">{p.club ?? "—"}</td>
         <td className="text-xs whitespace-nowrap">{e.fit ? `${POSITION_LABEL[e.fit.need.slot]} · ${e.fit.need.role.es}` : "—"}</td>
@@ -307,7 +320,8 @@ function Row({ e, leaguePct, target, onTrack, isOpen, toggle }: { e: CandidateEv
                 <div className="font-medium mb-1">En contra</div>
                 {e.red.map((r, i) => <p key={"r" + i} className="text-attr-low">✕ {r}</p>)}
                 {e.warnings.map((r, i) => <p key={"w" + i} className="text-attr-mid">⚠ {r}</p>)}
-                {e.red.length + e.warnings.length === 0 && <p className="text-muted">Nada.</p>}
+                {dna && !dna.ok && <p className="text-attr-mid">✗ Fuera del ADN: {dna.misses.join(", ")}.</p>}
+                {e.red.length + e.warnings.length === 0 && (!dna || dna.ok) && <p className="text-muted">Nada.</p>}
               </div>
               <div>
                 <div className="font-medium mb-1">Atributos clave del rol vs titular{e.fit?.need.starter ? ` (${e.fit.need.starter.player.name})` : ""}</div>

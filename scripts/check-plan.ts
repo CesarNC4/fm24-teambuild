@@ -5,7 +5,8 @@ import { ROLE_TRAIT_CODES, roleTraits } from "../src/lib/fm/roleTraits";
 import { ROLES, ROLE_BY_ID } from "../src/lib/fm/roles";
 import { CAPABILITY_LABEL, checkText, meetsProfile, profileText, tacticPlan, type TacticPlan } from "../src/lib/fm/slotPlan";
 import { buildLineup, newTactic, type Tactic } from "../src/lib/fm/tactics";
-import { NEED_LABEL, evaluateAll, squadNeeds, suggestAssignments } from "../src/lib/fm/scouting";
+import { NEED_LABEL, evaluateAll, squadNeeds } from "../src/lib/fm/scouting";
+import { DEFAULT_DNA, buildFocuses } from "../src/lib/fm/recruitment";
 import { TRAIT_BY_ID } from "../src/lib/fm/traits";
 
 let ok = true;
@@ -88,7 +89,7 @@ for (const [title, tac, squad] of [["dos recuperadores, solo titulares", t3, sta
   console.log(`  ${title}: ${withProfile.map((n) => `${n.slotId} ${NEED_LABEL[n.level]} (${n.reasons.at(-1)})`).join(" | ") || "ningún perfil para fichar"}`);
   expect(`${title}: cada perfil del plan es una necesidad de Ojeados`, withProfile.map((n) => n.slotId).sort().join() === signSlots);
   expect(`${title}: un hueco con perfil nunca queda «cubierto»`, withProfile.every((n) => n.level !== "cubierto"));
-  const asg = suggestAssignments(res.needs, [...squad], { transfer: null, wage: null });
+  const focuses = buildFocuses(res.needs, { tactic: tac, staff: [], dna: DEFAULT_DNA, budget: { transfer: null, wage: null }, firstTeam: [...squad], created: {} });
   if (title.includes("sin centradores")) {
     expect(`${title}: hay necesidades con perfil`, withProfile.length > 0);
     const crosser = players.find((p) => (p.attrs.Cro?.value ?? 0) >= 14 && p.position.slots.includes("DR"))!;
@@ -97,7 +98,7 @@ for (const [title, tac, squad] of [["dos recuperadores, solo titulares", t3, sta
     console.log("  candidato:", cand?.player.name, cand?.fit?.need.slotId, note);
     expect(`${title}: un ojeado que cumple el perfil lo ve en su evaluación`, !!cand?.fit?.need.profile && !!note?.startsWith("Cumple"), `${cand?.fit?.need.slotId} ${note}`);
   }
-  expect(`${title}: el encargo lleva los umbrales del plan`, withProfile.every((n) => asg.find((a) => a.need.slotId === n.slotId)?.filters.some((f) => f.label === "Perfil del plan")));
+  expect(`${title}: el foco lleva los umbrales del plan y la Cualidad de jugador`, withProfile.every((n) => { const f = focuses.find((x) => x.need?.slotId === n.slotId); return !!f && f.note.includes("Umbrales del plan") && f.details.some((d) => d.label === "Cualidad de jugador" && d.value.includes("Tiene")); }));
 }
 
 process.exit(ok ? 0 : 1);
