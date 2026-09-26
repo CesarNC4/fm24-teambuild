@@ -5,6 +5,10 @@ import { useMemo } from "react";
 import { captainCandidates, setPiecePlan, type Taker } from "@/lib/fm/setpieces";
 import { lineupForPool, POOL_LABEL } from "@/lib/fm/tactics";
 import { useAppStore } from "@/lib/store";
+import { SpecialistsPanel } from "@/components/Specialists";
+import type { SpecialistGroup } from "@/lib/fm/specialists";
+
+const SET_PIECE_GROUPS: SpecialistGroup[] = ["balon-parado"];
 
 function TakerList({ title, takers, hint }: { title: string; takers: Taker[]; hint?: string }) {
   return (
@@ -38,6 +42,7 @@ export default function SetPiecesPage() {
   }, [tactic, firstTeam.length, allPlayers, squads]);
   const plan = useMemo(() => (lineup ? setPiecePlan(lineup) : null), [lineup]);
   const captains = useMemo(() => captainCandidates(firstTeam, lineup).slice(0, 5), [firstTeam, lineup]);
+  const xiUids = useMemo(() => new Set(lineup?.slots.map((s) => s.starter?.player.uid).filter((u): u is string => !!u) ?? []), [lineup]);
 
   if (hydrated && firstTeam.length === 0) {
     return <div className="text-sm text-muted">No hay plantilla importada. <Link href="/" className="text-accent underline">Importa el primer equipo</Link> primero.</div>;
@@ -62,12 +67,12 @@ export default function SetPiecesPage() {
       <section className="space-y-2">
         <h2 className="font-semibold text-sm">Lanzadores</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          <TakerList title="Córners desde la izquierda" takers={plan.cornersLeft} hint="Rosca hacia dentro con la derecha; el mejor rematador no debería lanzar." />
-          <TakerList title="Córners desde la derecha" takers={plan.cornersRight} hint="Rosca hacia dentro con la izquierda." />
-          <TakerList title="Faltas directas" takers={plan.freeKicksDirect} hint="Tiros libres + tiros lejanos + técnica." />
-          <TakerList title="Faltas indirectas (centros)" takers={plan.freeKicksIndirect} hint="Tiros libres + centros + visión." />
-          <TakerList title="Penaltis" takers={plan.penalties} hint="Penaltis + serenidad." />
-          <TakerList title="Saques de banda largos" takers={plan.longThrows} hint="Saque largo + fuerza; solo si el primero pasa de 12." />
+          <TakerList title="Córners desde la izquierda" takers={plan.cornersLeft} hint="Índice «Lanzador de córner» (Córners 35, Técnica 20, Centros 20…) con la rosca hacia dentro: pie derecho. El mejor rematador no debería lanzar." />
+          <TakerList title="Córners desde la derecha" takers={plan.cornersRight} hint="Lo mismo con el pie izquierdo." />
+          <TakerList title="Faltas directas" takers={plan.freeKicksDirect} hint="Índice «Tiro libre directo»: Faltas 35, Tiros lejanos, Técnica, Decisiones y Serenidad." />
+          <TakerList title="Faltas escoradas (centros)" takers={plan.freeKicksIndirect} hint="Índice «Faltas escoradas»: Faltas 35, Técnica 20, Centros 20…" />
+          <TakerList title="Penaltis" takers={plan.penalties} hint="Índice «Penaltis»: Penaltis 40, Serenidad 30, Remate…" />
+          <TakerList title="Saques de banda largos" takers={plan.longThrows} hint="Índice «Saque de banda largo»: Saques largos 60, Técnica, Visión. Solo si el primero pasa de 12." />
         </div>
       </section>
 
@@ -85,11 +90,17 @@ export default function SetPiecesPage() {
       <section className="space-y-2">
         <h2 className="font-semibold text-sm">Córners a favor y en contra</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
-          <TakerList title="Rematadores (a favor)" takers={plan.aerialTargets} hint="Cabeceo + salto + fuerza: al primer palo el mejor, al segundo el siguiente, y uno al punto de penalti." />
-          <TakerList title="Borde del área" takers={plan.edgeOfBox} hint="Tiro lejano y primer toque para el rechace." />
+          <TakerList title="Rematadores (a favor)" takers={plan.aerialTargets} hint="Índice «Amenaza aérea» (Salto, Fuerza, Cabeceo, altura…): al primer palo el mejor, al segundo el siguiente, y uno al punto de penalti." />
+          <TakerList title="Borde del área" takers={plan.edgeOfBox} hint="Índice «Tiros lejanos» para el rechace, sin gastar rematadores." />
           <TakerList title="Se quedan atrás" takers={plan.stayBack} hint="Rápidos y sin remate: dos atrás contra el contra." />
-          <TakerList title="Marcadores (en contra)" takers={plan.aerialDefenders} hint="Cabeceo, salto y marcaje: marcan a los altos del rival." />
+          <TakerList title="Marcadores (en contra)" takers={plan.aerialDefenders} hint="Índices «Cabezazo defensivo» y «Marcaje»: marcan a los altos del rival." />
         </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="font-semibold text-sm">Especialistas de balón parado en toda la plantilla</h2>
+        <p className="text-xs text-muted">Los mismos índices, con todo el primer equipo y no solo el XI: sirve para saber a quién meter en los últimos minutos para un córner o un penalti. «XI» = titular en esta táctica.</p>
+        <SpecialistsPanel players={firstTeam} groups={SET_PIECE_GROUPS} highlight={xiUids} />
       </section>
 
       <section className="space-y-2">

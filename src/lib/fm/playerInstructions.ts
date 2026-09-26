@@ -10,12 +10,13 @@
  * la contradice, se avisa).
  */
 
-import type { AttrKey } from "./attributes";
+import { ATTR_BY_KEY, type AttrKey } from "./attributes";
 import type { RoleDef } from "./roles";
 import { TRAIT_BY_ID, type TraitDef } from "./traits";
 import type { Player, PositionSlot } from "./types";
 import { STYLE_BY_ID, styleTraits } from "./instructions";
 import { roleDefaults } from "./roleInstructions";
+import { SPECIALIST_BY_ID, specialistBreakdown, specialistIndex } from "./specialists";
 
 export type PIGroup =
   | "movimiento" | "anchura" | "canales" | "libertad" | "aguantar"
@@ -126,6 +127,16 @@ function footWeak(s: string | null): boolean {
   return !!s && /d[ée]bil|weak|very poor/i.test(s);
 }
 
+/** Índice de especialista del jugador (0 si no se puede calcular). */
+function ix(p: Player, id: string): number {
+  return specialistIndex(p, id) ?? 0;
+}
+/** «índice «Subir más» 14,2 (Desmarques 15, Decisiones 14)». */
+function ixText(p: Player, id: string): string {
+  const parts = specialistBreakdown(p, id, 2).map((b) => `${b.label === "height" ? "altura" : b.label === "punInv" ? "puños" : ATTR_BY_KEY[b.label]?.es ?? b.label} ${b.value ?? "?"}`);
+  return `índice «${SPECIALIST_BY_ID[id].es}» ${ix(p, id).toFixed(1)} (${parts.join(", ")})`;
+}
+
 export function suggestPlayerInstructions(p: Player, ctx: PIContext): PISuggestion[] {
   const out: PISuggestion[] = [];
   const add = (id: string, why: string, strength: 1 | 2 | 3) => out.push({ pi: PI_BY_ID[id], why, strength });
@@ -152,8 +163,8 @@ export function suggestPlayerInstructions(p: Player, ctx: PIContext): PISuggesti
   }
 
   // ---- Movimiento
-  if (!HOLDER_ROLES.has(rid) && !NO_FORWARD_ROLES.has(code) && (isMid || slot === "DL" || slot === "DR") && duty !== "D" && a(p, "OtB") >= 13 && a(p, "Sta") >= 13 && a(p, "Wor") >= 12) {
-    add("get-further-forward", `Desmarques ${a(p, "OtB")}, Resistencia ${a(p, "Sta")}: llega al área sin cansarse`, 2);
+  if (!HOLDER_ROLES.has(rid) && !NO_FORWARD_ROLES.has(code) && (isMid || slot === "DL" || slot === "DR") && duty !== "D" && ix(p, "pi-forward") >= 13 && a(p, "Sta") >= 12) {
+    add("get-further-forward", `${ixText(p, "pi-forward")}, Resistencia ${a(p, "Sta")}: llega al área sin cansarse`, 2);
   }
   if (isWide && (code === "W" || code === "WM" || code === "DW") && COUNTER_STYLES.has(style)) {
     add("stay-wider", "extremo puro en estilo de contragolpe: estira el campo", 2);
@@ -161,11 +172,11 @@ export function suggestPlayerInstructions(p: Player, ctx: PIContext): PISuggesti
   if (isWide && (code === "IF" || code === "IW") && (POSSESSION_STYLES.has(style) || style === "gegenpress")) {
     add("sit-narrower", "extremo interior en estilo de presión/posesión: cierra el bloque y aparece entre líneas", 1);
   }
-  if (isAtt && !TARGET_ROLES.has(code) && code !== "P" && a(p, "OtB") >= 13 && a(p, "Acc") >= 13 && a(p, "Ant") >= 12) {
-    add("move-into-channels", `Desmarques ${a(p, "OtB")}, Aceleración ${a(p, "Acc")}: ataca el espacio entre central y lateral`, 3);
+  if (isAtt && !TARGET_ROLES.has(code) && code !== "P" && ix(p, "pi-channels") >= 13) {
+    add("move-into-channels", `${ixText(p, "pi-channels")}: ataca el espacio entre central y lateral`, 3);
   }
-  if (["AP", "AM", "F9", "CF", "MEZ", "RPM", "SS"].includes(code) && a(p, "Fla") >= 14 && a(p, "Dec") >= 13 && a(p, "OtB") >= 13) {
-    add("roam", `Talento ${a(p, "Fla")}, Decisiones ${a(p, "Dec")}: aparece donde hay espacio`, 2);
+  if (["AP", "AM", "F9", "CF", "MEZ", "RPM", "SS"].includes(code) && ix(p, "pi-roam") >= 13.5) {
+    add("roam", `${ixText(p, "pi-roam")}: aparece donde hay espacio`, 2);
   }
 
   // ---- Posesión
@@ -203,8 +214,8 @@ export function suggestPlayerInstructions(p: Player, ctx: PIContext): PISuggesti
   if ((isDef || slot === "DM" || slot === "MC") && COUNTER_STYLES.has(style) && a(p, "Pas") >= 13 && a(p, "Vis") >= 12 && !POSSESSION_STYLES.has(style)) {
     add("more-direct-passes", `Pases ${a(p, "Pas")}, Visión ${a(p, "Vis")}: puede lanzar la transición desde atrás`, 2);
   }
-  if (["AP", "DLP", "AM", "MEZ", "IW", "TQ", "REG", "RPM", "EG", "WP", "DLF", "F9"].includes(code) && a(p, "Vis") >= 15 && a(p, "Pas") >= 14 && a(p, "Dec") >= 12) {
-    add("more-risky-passes", `Visión ${a(p, "Vis")}, Pases ${a(p, "Pas")}: que intente el pase que rompe`, 3);
+  if (["AP", "DLP", "AM", "MEZ", "IW", "TQ", "REG", "RPM", "EG", "WP", "DLF", "F9"].includes(code) && ix(p, "pi-risky") >= 14) {
+    add("more-risky-passes", `${ixText(p, "pi-risky")}: que intente el pase que rompe`, 3);
   }
   if ((HOLDER_ROLES.has(rid) || slot === "DC") && (a(p, "Vis") <= 11 || a(p, "Dec") <= 11) && a(p, "Pas") <= 13) {
     add("fewer-risky-passes", `Visión ${a(p, "Vis")}, Decisiones ${a(p, "Dec")}: pase seguro y a otra cosa`, 2);

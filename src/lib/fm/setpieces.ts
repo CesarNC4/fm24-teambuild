@@ -1,18 +1,22 @@
 /**
  * Balón parado y capitanes a partir del XI titular.
  *
- * Lanzadores por atributos (Córners, Faltas, Penaltis, Saques largos) con la
- * regla habitual de no gastar al mejor rematador aéreo en lanzar; rematadores
- * por juego aéreo; capitán por liderazgo, determinación, personalidad,
- * edad y estatus.
+ * Lanzadores y rematadores por los índices de especialista del Excel
+ * (specialists.ts: Lanzador de córner, Tiro libre directo, Faltas escoradas,
+ * Penaltis, Saque de banda largo, Amenaza aérea, Cabezazo defensivo…), con la
+ * regla habitual de no gastar al mejor rematador aéreo en lanzar; capitán por
+ * liderazgo, determinación, personalidad, edad y estatus.
  */
 
 import type { AttrKey } from "./attributes";
 import { personalityTierLevel } from "./personalities";
+import { heightPoints, specialistIndex } from "./specialists";
 import type { LineupResult } from "./tactics";
 import type { Player } from "./types";
 
 const a = (p: Player, k: AttrKey) => p.attrs[k]?.value ?? 0;
+/** Índice de especialista 0-20 (0 si no se puede calcular). */
+const ix = (p: Player, id: string) => specialistIndex(p, id) ?? 0;
 
 export interface Taker {
   player: Player;
@@ -45,8 +49,7 @@ export interface SetPiecePlan {
  * secundarios. Devuelve 0-20 aproximado.
  */
 export function headerProfile(p: Player): number {
-  const h = p.height ?? 180;
-  const heightScore = Math.max(0, Math.min(20, 8 + (h - 175) * 0.6));
+  const heightScore = heightPoints(p.height) ?? 10;
   return a(p, "Jum") * 0.3 + a(p, "Str") * 0.2 + a(p, "Hea") * 0.25 + heightScore * 0.15 + a(p, "Ant") * 0.05 + a(p, "Pos") * 0.05;
 }
 
@@ -61,7 +64,7 @@ export function setPiecePlan(lineup: LineupResult): SetPiecePlan {
   const top = (score: (p: Player) => number, n = 3, pool = xi): Taker[] =>
     pool.map((p) => ({ player: p, score: score(p) })).sort((x, y) => y.score - x.score).slice(0, n);
 
-  const aerial = (p: Player) => a(p, "Hea") * 0.5 + a(p, "Jum") * 0.35 + a(p, "Str") * 0.15;
+  const aerial = (p: Player) => ix(p, "aerial-threat");
   const aerialTargets = top(aerial, 4);
   const targetSet = new Set(aerialTargets.slice(0, 2).map((t) => t.player.uid));
 
@@ -72,7 +75,7 @@ export function setPiecePlan(lineup: LineupResult): SetPiecePlan {
     return /muy fuerte|fuerte|very strong|strong|bastante/i.test(f ?? "") ? 1 : 0.85;
   };
   const cornerScore = (side: "L" | "R") => (p: Player) => {
-    let s = (a(p, "Cor") * 0.7 + a(p, "Tec") * 0.15 + a(p, "Vis") * 0.15) * foot(p, side === "L" ? "R" : "L");
+    let s = ix(p, "corner") * foot(p, side === "L" ? "R" : "L");
     if (targetSet.has(p.uid)) s -= 3; // no gastar al rematador
     return s;
   };
@@ -80,17 +83,17 @@ export function setPiecePlan(lineup: LineupResult): SetPiecePlan {
   const cornersRight = top(cornerScore("R"));
   for (const t of [...cornersLeft.slice(0, 1), ...cornersRight.slice(0, 1)]) if (targetSet.has(t.player.uid)) t.note = "es tu mejor rematador: si lanza él, pierdes su remate";
 
-  const freeKicksDirect = top((p) => a(p, "Fre") * 0.6 + a(p, "Lon") * 0.25 + a(p, "Tec") * 0.15);
-  const freeKicksIndirect = top((p) => a(p, "Fre") * 0.5 + a(p, "Cro") * 0.25 + a(p, "Vis") * 0.25);
-  const penalties = top((p) => a(p, "Pen") * 0.7 + a(p, "Cmp") * 0.2 + a(p, "Fin") * 0.1);
-  const longThrows = top((p) => a(p, "L Th") * 0.8 + a(p, "Str") * 0.2);
+  const freeKicksDirect = top((p) => ix(p, "fk-direct"));
+  const freeKicksIndirect = top((p) => ix(p, "fk-wide"));
+  const penalties = top((p) => ix(p, "penalties"));
+  const longThrows = top((p) => ix(p, "long-throw"));
   if ((longThrows[0]?.score ?? 0) < 12) notes.push("Nadie con saque de banda largo ≥12: no montes jugadas de saque largo.");
   if ((freeKicksDirect[0]?.score ?? 0) < 12) notes.push("Sin lanzador de faltas directas fiable (<12): en las faltas lejanas, centra en vez de tirar.");
 
   // Quién no sube a rematar: los más rápidos y los de peor juego aéreo
   const stayBack = top((p) => a(p, "Pac") * 0.4 + a(p, "Acc") * 0.3 + a(p, "Ant") * 0.3 - aerial(p) * 0.3, 2);
-  const edgeOfBox = top((p) => a(p, "Lon") * 0.5 + a(p, "Fir") * 0.2 + a(p, "Tec") * 0.3 - aerial(p) * 0.2, 2, xi.filter((p) => !targetSet.has(p.uid)));
-  const aerialDefenders = top((p) => a(p, "Hea") * 0.35 + a(p, "Jum") * 0.3 + a(p, "Mar") * 0.2 + a(p, "Str") * 0.15, 4);
+  const edgeOfBox = top((p) => ix(p, "long-shots") - aerial(p) * 0.2, 2, xi.filter((p) => !targetSet.has(p.uid)));
+  const aerialDefenders = top((p) => ix(p, "def-header") * 0.7 + ix(p, "marking") * 0.3, 4);
   // Rutina de arrastre
   const ideal = top(headerProfile, 4);
   const nearPost = ideal[0] ?? null;

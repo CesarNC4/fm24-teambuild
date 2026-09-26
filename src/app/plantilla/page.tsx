@@ -9,6 +9,10 @@ import type { Player } from "@/lib/fm/types";
 import { useAppStore } from "@/lib/store";
 import { formatDeltas, progressSince } from "@/lib/fm/history";
 import { AttrCell, ScoreBadge } from "@/components/AttrCell";
+import { SpecialistsPanel } from "@/components/Specialists";
+import type { SpecialistGroup } from "@/lib/fm/specialists";
+
+const SPECIALIST_GROUPS: SpecialistGroup[] = ["balon-parado", "con-balon", "sin-balon", "portero", "instrucciones"];
 
 type SortKey = "name" | "age" | "pos" | "best" | "wage" | "value" | AttrKey;
 
@@ -112,6 +116,12 @@ export default function SquadPage() {
         </div>
         <div className="ml-auto text-xs text-muted">{sorted.length} jugadores</div>
       </div>
+
+      <details className="bg-surface-2/40 border border-border rounded-md p-3">
+        <summary className="cursor-pointer font-medium text-sm">Especialistas de la plantilla <span className="text-muted font-normal">· los 36 índices del Excel PandaFM (0-20): quién es el mejor en cada cosa</span></summary>
+        <p className="text-xs text-muted mt-2 mb-3">Cada índice es una media ponderada de atributos; pasa el ratón por el nombre del índice para ver los pesos y por el jugador para ver sus atributos. Los índices de instrucciones dicen quién puede con «Tomar más riesgos», «Subir más», «Contrapresión»… y los usan las instrucciones sugeridas de Táctica.</p>
+        <SpecialistsPanel players={players} groups={SPECIALIST_GROUPS} />
+      </details>
 
       <div className="overflow-auto border border-border rounded-md max-h-[calc(100vh-180px)]">
         <table className="tbl w-full">

@@ -10,6 +10,7 @@ import { DUTY_LABEL, POSITION_LABEL, rolesForPosition } from "@/lib/fm/roles";
 import { DEFAULT_CUP_YOUTH, POOL_LABEL, depthMap, lineupForPool, newTactic, poolPlayers, rankFormations, tacticLocks, withLocks, youthSquadIds, type DepthTone, type LineupResult, type SlotResult } from "@/lib/fm/tactics";
 import { roleDefaultNames, roleTraitClashes, strikerAerial, suggestPlayerInstructions, type PISuggestion } from "@/lib/fm/playerInstructions";
 import { bestGroupRoles, recommendRoleGroups, recommendRoles, recommendedRoleIds } from "@/lib/fm/styleRoles";
+import { SPECIALIST_BY_ID } from "@/lib/fm/specialists";
 import { AREA_LABEL, FUNCTION_HINT, FUNCTION_LABEL, FUNCTION_ORDER, tacticBalance, type BalanceIssue } from "@/lib/fm/balance";
 import { useAppStore } from "@/lib/store";
 import { ScoreBadge } from "@/components/AttrCell";
@@ -654,7 +655,7 @@ export default function TacticPage() {
               <div className="space-y-1.5">
                 {groupInstructions(fits, phase).map((g) => {
                   const tipOf = (f: InstructionFit) => f.reqs
-                    .map((r) => `${r.req.why}: ${r.mean?.toFixed(1) ?? "—"}` + (r.players.length ? ` (peor: ${r.players.slice(0, 2).map((p) => `${p.name} ${p.mean.toFixed(1)}`).join(", ")})` : ""))
+                    .map((r) => `${r.req.why}${r.req.index ? ` (índice «${SPECIALIST_BY_ID[r.req.index]?.es}» del Excel)` : ""}: ${r.mean?.toFixed(1) ?? "—"}` + (r.players.length ? ` (peor: ${r.players.slice(0, 2).map((p) => `${p.name} ${p.mean.toFixed(1)}`).join(", ")})` : ""))
                     .join("\n") || "No depende de atributos";
                   if (g.kind === "single") {
                     const f = g.items[0];

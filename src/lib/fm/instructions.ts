@@ -13,6 +13,7 @@
  */
 
 import type { AttrKey } from "./attributes";
+import { SPECIALIST_BY_ID, specialistIndex } from "./specialists";
 import type { LineupResult } from "./tactics";
 import type { PositionSlot } from "./types";
 
@@ -65,6 +66,8 @@ export interface Requirement {
   attrs: AttrKey[];
   /** Descripción corta de por qué. */
   why: string;
+  /** Índice de especialista (specialists.ts) que mide el requisito en lugar de la media simple de `attrs`. */
+  index?: string;
 }
 
 export interface Instruction {
@@ -98,6 +101,10 @@ const HIGH_LINE_REQ = [
   { positions: DEF, attrs: ["Pac", "Acc", "Ant", "Pos", "Cnt"] as AttrKey[], why: "hay mucho espacio a la espalda" },
   { positions: GK, attrs: ["TRO", "1v1", "Acc", "Ant"] as AttrKey[], why: "el portero debe salir a cubrir" },
 ];
+const MUCH_HIGHER_LINE_REQ = [
+  { positions: DEF, attrs: ["Pos", "Pac", "Dec", "Ant", "Cnt"] as AttrKey[], why: "hay mucho espacio a la espalda", index: "ti-high-line" },
+  HIGH_LINE_REQ[1],
+];
 
 export const INSTRUCTIONS: Instruction[] = [
   // ------------------------------------------------------------- Con posesión
@@ -110,9 +117,9 @@ export const INSTRUCTIONS: Instruction[] = [
   { id: "ritmo-bajo", name: "Ritmo más bajo", short: "Más bajo", phase: "posesion", group: "ritmo", level: -1,
     reqs: [{ positions: [], attrs: ["Cmp", "Dec", "Pas"], why: "controlar el balón sin precipitarse" }] },
   { id: "ritmo-alto", name: "Ritmo más alto", short: "Más alto", phase: "posesion", group: "ritmo", level: 1,
-    reqs: [{ positions: [], attrs: ["Dec", "Fir", "Tec", "Cmp"], why: "decidir y ejecutar rápido bajo presión" }] },
+    reqs: [{ positions: [], attrs: ["Dec", "Ant", "Tec", "Sta", "Acc", "Fir", "Vis"], why: "decidir y ejecutar rápido bajo presión", index: "ti-tempo" }] },
   { id: "ritmo-mucho-mas-alto", name: "Ritmo mucho más alto", short: "Mucho más alto", phase: "posesion", group: "ritmo", level: 2,
-    reqs: [{ positions: [], attrs: ["Dec", "Fir", "Tec", "Cmp", "Sta"], why: "decidir y ejecutar muy rápido durante 90 minutos" }] },
+    reqs: [{ positions: [], attrs: ["Dec", "Ant", "Tec", "Sta", "Acc", "Fir", "Vis"], why: "decidir y ejecutar muy rápido durante 90 minutos", index: "ti-tempo" }] },
   { id: "amplitud-muy-estrecha", name: "Amplitud del ataque: muy estrecha", short: "Muy estrecha", phase: "posesion", group: "amplitud", level: -2,
     reqs: [{ positions: [...CREATORS, "ST"], attrs: ["Fir", "Tec", "Pas", "Agi", "Cmp"], why: "combinar en espacios muy reducidos" }] },
   { id: "amplitud-estrecha", name: "Amplitud del ataque: bastante estrecha", short: "Bastante estrecha", phase: "posesion", group: "amplitud", level: -1,
@@ -136,7 +143,7 @@ export const INSTRUCTIONS: Instruction[] = [
       { positions: GK, attrs: ["Kic", "Cmp", "Fir", "Pas"], why: "el portero participa con el pie" },
     ] },
   { id: "trabajar-area", name: "Intentar llevar el balón hasta el área", phase: "posesion", group: null,
-    reqs: [{ positions: ["MC", "AMC", "AML", "AMR"], attrs: ["Pas", "Tec", "Dec", "Cmp", "Vis"], why: "paciencia y calidad en el último tercio" }] },
+    reqs: [{ positions: ["MC", "AMC", "AML", "AMR"], attrs: ["Dec", "Tec", "Cmp", "Pas", "Vis"], why: "paciencia y calidad en el último tercio", index: "ti-box" }] },
   { id: "centros-tempranos", name: "Hacer centros rápidos", phase: "posesion", group: null,
     reqs: [
       { positions: WIDE, attrs: ["Cro", "Tec"], why: "centros de calidad desde posiciones profundas" },
@@ -149,7 +156,7 @@ export const INSTRUCTIONS: Instruction[] = [
   { id: "tirar-minima", name: "Disparar cuando se pueda", phase: "posesion", group: null,
     reqs: [{ positions: [...ATT, "MC"], attrs: ["Lon", "Tec", "Fin"], why: "tiros desde fuera con buen porcentaje" }] },
   { id: "mas-creatividad", name: "Ser más expresivos", short: "Más expresivos", phase: "posesion", group: "creatividad",
-    reqs: [{ positions: ATT, attrs: ["Fla", "Vis", "Tec", "Dec"], why: "libertad para improvisar sin desordenarse" }] },
+    reqs: [{ positions: ATT, attrs: ["Fla", "Tec", "Vis", "Dec"], why: "libertad para improvisar sin desordenarse", index: "ti-expressive" }] },
   { id: "mas-disciplina", name: "Ser más disciplinados", short: "Más disciplinados", phase: "posesion", group: "creatividad",
     reqs: [{ positions: [], attrs: ["Tea", "Dec", "Pos", "Cnt"], why: "cumplir el plan sin salirse del guion" }] },
   { id: "desmarque-fuera-izq", name: "Doblar por la izquierda", short: "Por fuera", phase: "posesion", group: "desmarque-izq",
@@ -181,11 +188,11 @@ export const INSTRUCTIONS: Instruction[] = [
 
   // ------------------------------------------------------------- En transición
   { id: "contrapresionar", name: "Contrapresión", short: "Contrapresión", phase: "transicion", group: "trans-def",
-    reqs: [{ positions: [...MID, ...ATT], attrs: ["Wor", "Sta", "Agg", "Tea", "Ant"], why: "recuperar el balón nada más perderlo exige piernas y actitud" }] },
+    reqs: [{ positions: [...MID, ...ATT], attrs: ["Agg", "Dec", "Ant", "Sta", "Acc", "Bra"], why: "recuperar el balón nada más perderlo exige piernas y actitud", index: "ti-counterpress" }] },
   { id: "reagruparse", name: "Reagruparse", short: "Reagruparse", phase: "transicion", group: "trans-def",
     reqs: [{ positions: [...DEF, ...MID], attrs: ["Pos", "Dec", "Tea", "Cnt", "Pac"], why: "volver rápido y ordenado a la posición" }] },
   { id: "contraatacar", name: "A la contra", short: "A la contra", phase: "transicion", group: "trans-atq",
-    reqs: [{ positions: [...ATT, "ML", "MR"], attrs: ["Pac", "Acc", "OtB", "Dri", "Dec"], why: "correr al espacio y decidir bien con pocos apoyos" }] },
+    reqs: [{ positions: [...ATT, "ML", "MR"], attrs: ["Acc", "Pac", "Ant", "Vis", "Dec", "Pas", "Tec", "Fir"], why: "correr al espacio y decidir bien con pocos apoyos", index: "ti-counter" }] },
   { id: "mantener-forma", name: "Mantener dibujo", short: "Mantener dibujo", phase: "transicion", group: "trans-atq",
     reqs: [{ positions: [], attrs: ["Pos", "Tea", "Cnt", "Dec"], why: "conservar la estructura al recuperar el balón" }] },
   { id: "distribuir-rapido", name: "Distribuir con rapidez", short: "Con rapidez", phase: "transicion", group: "distribucion",
@@ -222,7 +229,7 @@ export const INSTRUCTIONS: Instruction[] = [
   { id: "linea-def-baja", name: "Línea defensiva más baja", short: "Más baja", phase: "sin-balon", group: "linea-def", level: -1,
     reqs: [{ positions: CB, attrs: ["Hea", "Jum", "Mar", "Pos", "Str"], why: "defender el área ante centros y balones largos" }] },
   { id: "linea-def-alta", name: "Línea defensiva más alta", short: "Más alta", phase: "sin-balon", group: "linea-def", level: 1, reqs: HIGH_LINE_REQ },
-  { id: "linea-def-mucho-mas-alta", name: "Línea defensiva mucho más alta", short: "Mucho más alta", phase: "sin-balon", group: "linea-def", level: 2, reqs: HIGH_LINE_REQ },
+  { id: "linea-def-mucho-mas-alta", name: "Línea defensiva mucho más alta", short: "Mucho más alta", phase: "sin-balon", group: "linea-def", level: 2, reqs: MUCH_HIGHER_LINE_REQ },
   { id: "linea-presion-baja", name: "Bloque bajo", short: "Bloque bajo", phase: "sin-balon", group: "linea-presion", level: -1,
     reqs: [{ positions: [...DEF, ...MID], attrs: ["Pos", "Cnt", "Mar", "Hea", "Bra"], why: "defender muchos minutos cerca del área propia" }] },
   { id: "linea-presion-media", name: "Bloque medio", short: "Bloque medio", phase: "sin-balon", group: "linea-presion", level: 0,
@@ -349,6 +356,7 @@ export function instructionFit(instr: Instruction, lineup: LineupResult): Instru
     const affected = lineup.slots.filter((s) => s.starter && (req.positions.length === 0 ? s.slot.slot !== "GK" : req.positions.includes(s.slot.slot)));
     const players = affected
       .map((s) => {
+        if (req.index && SPECIALIST_BY_ID[req.index]) return { name: s.starter!.player.name, mean: specialistIndex(s.starter!.player, req.index) ?? NaN };
         const vals = req.attrs.map((a) => s.starter!.player.attrs[a]?.value).filter((v): v is number => v != null);
         return { name: s.starter!.player.name, mean: vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : NaN };
       })
