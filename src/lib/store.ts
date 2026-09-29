@@ -11,6 +11,7 @@ import type { TrainingWeekSettings } from "./fm/training";
 import { mergeStaff, type StaffMember } from "./fm/staff";
 import { DEFAULT_DNA, type ClubDna, type CreatedFocus } from "./fm/recruitment";
 import { mergeStats, removeStatsSource, type StatRecord, type StatsStore } from "./fm/stats";
+import { applyMoves, dedupeClubSquads, movesOnImport } from "./fm/membership";
 
 /** Almacenamiento en IndexedDB (mucha más capacidad que localStorage). */
 const idbStorage: StateStorage = {
@@ -133,13 +134,20 @@ export const useAppStore = create<AppState>()(
       statsImports: {},
 
       setPlayers: (source, players, meta) =>
-        set((s) => ({
-          players: { ...s.players, [source]: players },
-          imports: { ...s.imports, [source]: meta },
+        set((s) => {
+          // Cada jugador en una sola plantilla de club: los que trae esta importación salen de las demás
+          const moves = movesOnImport(s.players, s.squads, source, players);
+          const moved = applyMoves(s.players, moves);
+          const imports = { ...s.imports, [source]: meta };
+          for (const from of new Set(moves.map((m) => m.from))) if (imports[from]) imports[from] = { ...imports[from]!, count: moved[from].length };
+          return {
+          players: { ...moved, [source]: players },
+          imports,
           clubName: source === "plantilla" ? (mostCommonClub(players) ?? s.clubName) : s.clubName,
           // Los ojeados, la liga y los rivales no cuentan: no son de tu club.
           history: source === "ojeados" || source === "liga" || source.startsWith("rival-") ? s.history : appendSnapshots(s.history, players, meta.importedAt),
-        })),
+          };
+        }),
       clearSource: (source) =>
         set((s) => ({
           players: { ...s.players, [source]: [] },
@@ -245,6 +253,10 @@ function normalizePersisted(p: Partial<PersistedState>): Partial<PersistedState>
   const players: Record<string, Player[]> = { ...(p.players ?? {}) };
   const imports: Record<string, ImportMeta | null> = { ...(p.imports ?? {}) };
   for (const q of squads) { players[q.id] ??= []; imports[q.id] ??= null; }
+  // Duplicados guardados antes de que cada jugador estuviera en una sola plantilla de club
+  const deduped = dedupeClubSquads(players, squads, imports);
+  for (const from of new Set(deduped.moves.map((m) => m.from))) if (imports[from]) imports[from] = { ...imports[from]!, count: deduped.players[from].length };
+  Object.assign(players, deduped.players);
   // Instrucciones que ya no existen en FM24 (trampa del fuera de juego, marcaje estricto, anchura defensiva)
   // Fijados por plantilla y roles que ya no caben en su hueco (Organizador en banda en MP banda → Extremo inverso)
   const tactics = (p.tactics ?? []).map((t) => migrateTactic({ ...t, instructions: migrateInstructions(t.instructions ?? []) }));

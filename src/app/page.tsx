@@ -9,6 +9,7 @@ import { coverageText, useLeague } from "@/lib/useLeague";
 import { STAFF_KIND_LABEL, isStaffExport, parseStaffHtml, type StaffKind } from "@/lib/fm/staff";
 import { isStatsExport, readStatsExport, sampleOf, seasonOf, statName } from "@/lib/fm/stats";
 import { estimateGameYear } from "@/lib/fm/youth";
+import { isClubSquad, movesOnImport } from "@/lib/fm/membership";
 
 const FIELD_OPTIONS: { value: string; label: string }[] = [
   ["name", "Nombre"], ["age", "Edad"], ["wage", "Sueldo"], ["value", "Valor de traspaso"],
@@ -126,6 +127,9 @@ export default function ImportPage() {
     const { records } = readStatsExport(html, { season: seasonOf(year), source, importedAt, club: statsClub });
     importStats(source, records, { fileName, importedAt, count: records.length });
   };
+
+  // Jugadores que ya estaban en otra plantilla de club (ascensos, fichajes): salen de allí al guardar
+  const moves = useMemo(() => (result && !statsOnly ? movesOnImport(allPlayers, squads, source, result.players) : []), [result, statsOnly, allPlayers, squads, source]);
 
   const onFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
@@ -438,6 +442,18 @@ export default function ImportPage() {
             </button>
             {saved && <span className="text-attr-good">Guardado ✓</span>}
           </div>
+
+          {moves.length > 0 && (
+            <div className="text-xs bg-surface border border-border rounded-md p-2">
+              <b>{moves.length} {moves.length === 1 ? "jugador cambia" : "jugadores cambian"} de plantilla</b> (ascenso, bajada o fichaje): al guardar {moves.length === 1 ? "sale" : "salen"} de donde estaba{moves.length === 1 ? "" : "n"}, sin tener que volver a importar esa plantilla.
+              <div className="text-muted mt-0.5">
+                {[...new Set(moves.map((m) => m.from))].map((from) => `De ${squads.find((q) => q.id === from)?.name ?? from}: ${moves.filter((m) => m.from === from).map((m) => m.name).join(", ")}`).join(" · ")}
+              </div>
+            </div>
+          )}
+          {isClubSquad(squads.find((q) => q.id === source)) && moves.length === 0 && existing.length > 0 && (
+            <div className="text-xs text-muted">Nadie viene de otra de tus plantillas ni de un rival. Si alguien de otra plantilla aparece aquí, se quita de allí solo: cada jugador está en una sola plantilla de club (los cedidos siguen en la suya).</div>
+          )}
 
           {result.missingAttrs.length > 0 && (
             <div className="text-xs text-muted">
