@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ATTR_BY_KEY } from "@/lib/fm/attributes";
-import { POSITION_LABEL } from "@/lib/fm/roles";
+import { DUTY_LABEL, POSITION_LABEL, POSITION_ORDER, ROLE_BY_ID, rolesForPosition, type RoleDef } from "@/lib/fm/roles";
+import { scoreRole } from "@/lib/fm/scoring";
+import { familiarity } from "@/lib/fm/tactics";
+import type { PositionSlot } from "@/lib/fm/types";
 import { TIER_LABEL, type PersonalityTierLevel } from "@/lib/fm/personalities";
 import { NEED_LABEL, SCOUTING_TIPS, VERDICT_LABEL, evaluateAll, fmtMoney, overpaidPlayers, squadNeeds, type CandidateEval, type NeedLevel, type Verdict } from "@/lib/fm/scouting";
 import { buildFocuses, dnaCheck, evolutionNeeds, proposedTargets, staffLoad, styleDnaRules, type DnaResult } from "@/lib/fm/recruitment";
@@ -52,6 +55,10 @@ export default function ScoutingPage() {
   const [onlyDna, setOnlyDna] = useState(false);
   const [showTargets, setShowTargets] = useState(true);
   const [slotFilter, setSlotFilter] = useState<string>("todos");
+  /** Lente de posición y rol, como en la pestaña Roles. */
+  const [viewSlot, setViewSlot] = useState<PositionSlot | null>(null);
+  const [viewRole, setViewRole] = useState<string | null>(null);
+  const [viewFamiliar, setViewFamiliar] = useState(true);
   const [hideDiscarded, setHideDiscarded] = useState(true);
   const [maxAge, setMaxAge] = useState<number | "">("");
   const [open, setOpen] = useState<string | null>(null);
@@ -93,7 +100,37 @@ export default function ScoutingPage() {
     return m;
   }, [evals, statsCtx, league, leagueClubs]);
 
-  const list = evals.filter((e) => (!onlyDna || dnaByUid.get(e.player.uid)?.ok) && (!hideDiscarded || e.verdict !== "descartar") && (slotFilter === "todos" || e.fit?.need.slotId === slotFilter) && (maxAge === "" || (e.player.age ?? 0) <= maxAge));
+  // Lente de posición y rol: cada ojeado puntuado en ese rol (o el mejor de la posición) frente a tu mejor jugador ahí
+  const viewRoles = useMemo(() => (viewSlot ? (viewRole ? [ROLE_BY_ID[viewRole]] : rolesForPosition(viewSlot)) : []), [viewSlot, viewRole]);
+  const viewOf = useMemo(() => {
+    if (!viewSlot) return null;
+    return (p: (typeof firstTeam)[number]) => {
+      const fam = familiarity(p, viewSlot);
+      let best: { role: RoleDef; score: number; min: number; max: number } | null = null;
+      for (const r of viewRoles) {
+        const sc = scoreRole(p, r);
+        if (!best || sc.score * fam > best.score) best = { role: r, score: sc.score * fam, min: sc.min * fam, max: sc.max * fam };
+      }
+      return best;
+    };
+  }, [viewSlot, viewRoles]);
+  const ownBest = useMemo(() => {
+    if (!viewOf) return null;
+    let best: { name: string; score: number; role: RoleDef } | null = null;
+    for (const p of firstTeam) { const v = viewOf(p); if (v && (!best || v.score > best.score)) best = { name: p.name, score: v.score, role: v.role }; }
+    return best;
+  }, [viewOf, firstTeam]);
+  const tacticRolesHere = useMemo(() => new Set((needsRes?.needs ?? []).filter((n) => n.slot === viewSlot).map((n) => n.role.id)), [needsRes, viewSlot]);
+  const pickNeed = (n: { slotId: string; slot: PositionSlot; role: RoleDef }) => {
+    if (slotFilter === n.slotId) { setSlotFilter("todos"); setViewSlot(null); setViewRole(null); return; }
+    setSlotFilter(n.slotId); setViewSlot(n.slot); setViewRole(n.role.id);
+  };
+  const pickSlot = (s: PositionSlot | null) => { setSlotFilter("todos"); setViewSlot(s); setViewRole(null); };
+
+  const list = evals.filter((e) => (!onlyDna || dnaByUid.get(e.player.uid)?.ok) && (!hideDiscarded || e.verdict !== "descartar") && (slotFilter === "todos" || e.fit?.need.slotId === slotFilter) && (maxAge === "" || (e.player.age ?? 0) <= maxAge)
+    && (!viewSlot || slotFilter !== "todos" || (viewFamiliar ? e.player.position.slots.includes(viewSlot) : familiarity(e.player, viewSlot) >= 0.85) && e.player.isGoalkeeper === (viewSlot === "GK")));
+  const views = new Map(viewOf ? list.map((e) => [e.player.uid, viewOf(e.player)] as const) : []);
+  if (viewOf) list.sort((a, b) => (views.get(b.player.uid)?.score ?? 0) - (views.get(a.player.uid)?.score ?? 0));
 
   if (hydrated && firstTeam.length === 0) {
     return <div className="text-sm text-muted">No hay plantilla importada. <Link href="/" className="text-accent underline">Importa el primer equipo</Link> primero.</div>;
@@ -122,7 +159,7 @@ export default function ScoutingPage() {
             {needsRes.needs.map((n) => (
               <button
                 key={n.slotId}
-                onClick={() => setSlotFilter(slotFilter === n.slotId ? "todos" : n.slotId)}
+                onClick={() => pickNeed(n)}
                 className={`text-left border rounded-md p-2 text-xs bg-surface ${NEED_CLASS[n.level]} ${slotFilter === n.slotId ? "ring-2 ring-accent" : ""}`}
                 title={n.reasons.join("\n")}
               >
@@ -142,7 +179,7 @@ export default function ScoutingPage() {
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted">Urgente: sin suplente real en el segundo XI (o en rojo en el mapa de profundidad), o el titular es el eslabón débil del estilo. Mejorable: titular 6 puntos por debajo de la media del XI, por debajo del percentil 40 de la liga, o un perfil del plan por hueco que nadie de la plantilla cubre. Sucesión: titular de 30+ sin relevo o con contrato que vence; si un juvenil está a menos de 8 puntos, no hace falta fichar. Clic en un hueco para filtrar candidatos.</p>
+          <p className="text-xs text-muted">Urgente: sin suplente real en el segundo XI (o en rojo en el mapa de profundidad), o el titular es el eslabón débil del estilo. Mejorable: titular 6 puntos por debajo de la media del XI, por debajo del percentil 40 de la liga, o un perfil del plan por hueco que nadie de la plantilla cubre. Sucesión: titular de 30+ sin relevo o con contrato que vence; si un juvenil está a menos de 8 puntos, no hace falta fichar. Clic en un hueco para ver sus candidatos con su posición y su rol.</p>
         </section>
       )}
 
@@ -257,7 +294,34 @@ export default function ScoutingPage() {
           <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={hideDiscarded} onChange={(e) => setHideDiscarded(e.target.checked)} /> ocultar descartados</label>
           <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={onlyDna} onChange={(e) => setOnlyDna(e.target.checked)} /> solo los que cumplen el ADN</label>
           <label className="text-xs">edad máx. <input className="bg-surface border border-border rounded px-1 w-12" value={maxAge} onChange={(e) => setMaxAge(e.target.value ? Number(e.target.value) : "")} /></label>
-          {slotFilter !== "todos" && <button className="text-xs underline" onClick={() => setSlotFilter("todos")}>quitar filtro de hueco</button>}
+          {slotFilter !== "todos" && <button className="text-xs underline" onClick={() => pickSlot(null)}>quitar filtro de hueco</button>}
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-xs text-muted mr-1">Mirar como:</span>
+            <button onClick={() => pickSlot(null)} className={`px-2.5 py-1 rounded text-xs border ${!viewSlot ? "bg-accent text-accent-fg border-accent" : "border-border hover:bg-surface-2"}`}>Todas</button>
+            {POSITION_ORDER.map((ps) => (
+              <button key={ps} onClick={() => pickSlot(ps)} className={`px-2.5 py-1 rounded text-xs border ${viewSlot === ps ? "bg-accent text-accent-fg border-accent" : "border-border hover:bg-surface-2"}`}>{POSITION_LABEL[ps]}</button>
+            ))}
+          </div>
+          {viewSlot && (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-xs text-muted mr-1">Rol:</span>
+              <button onClick={() => setViewRole(null)} className={`px-2 py-0.5 rounded text-xs border ${!viewRole ? "bg-accent text-accent-fg border-accent" : "border-border hover:bg-surface-2"}`}>El mejor de cada uno</button>
+              {rolesForPosition(viewSlot).map((r) => (
+                <button key={r.id} onClick={() => setViewRole(r.id)} title={`${r.es} (${DUTY_LABEL[r.duty]})${tacticRolesHere.has(r.id) ? " · lo usa tu táctica" : ""}`}
+                  className={`px-2 py-0.5 rounded text-xs border ${viewRole === r.id ? "bg-accent text-accent-fg border-accent" : tacticRolesHere.has(r.id) ? "border-accent/60 hover:bg-surface-2" : "border-border hover:bg-surface-2"}`}>
+                  {tacticRolesHere.has(r.id) ? "★ " : ""}{r.es} ({DUTY_LABEL[r.duty]})
+                </button>
+              ))}
+            </div>
+          )}
+          {viewSlot && (
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+              {slotFilter === "todos" && <label className="flex items-center gap-1"><input type="checkbox" checked={viewFamiliar} onChange={(e) => setViewFamiliar(e.target.checked)} /> solo los que dominan la posición</label>}
+              <span>Mirando: <b className="text-foreground">{POSITION_LABEL[viewSlot]} · {viewRole ? `${ROLE_BY_ID[viewRole].es} (${DUTY_LABEL[ROLE_BY_ID[viewRole].duty]})` : "el mejor rol de cada uno"}</b>{slotFilter !== "todos" ? " (hueco de tu táctica)" : ""}. «Nivel» es su puntuación ahí y «vs 1º eq.», la diferencia con tu mejor jugador{ownBest ? ` (${ownBest.name}, ${Math.round(ownBest.score)}${viewRole ? "" : ` de ${ownBest.role.es}`})` : ""}. ★ = rol de tu táctica en esa posición.</span>
+            </div>
+          )}
         </div>
         {scouted.length === 0 && (
           <p className="text-sm text-muted">No hay ojeados. Exporta una búsqueda de jugadores o tu lista de ojeados con la misma vista e <Link href="/" className="text-accent underline">impórtala como «Ojeados / búsqueda»</Link>.</p>
@@ -280,6 +344,7 @@ export default function ScoutingPage() {
                     target={targets[e.player.uid] ?? null}
                     dna={dnaByUid.get(e.player.uid) ?? null}
                     perf={perfByUid.get(e.player.uid) ?? null}
+                    view={viewOf ? { slot: viewSlot!, ...views.get(e.player.uid)!, own: ownBest?.score ?? null } : null}
                     onTrack={() => track(e)}
                     isOpen={open === e.player.uid}
                     toggle={() => setOpen(open === e.player.uid ? null : e.player.uid)}
@@ -305,7 +370,17 @@ interface RowPerf {
   sameLeague: boolean;
 }
 
-function Row({ e, leaguePct, target, dna, perf, onTrack, isOpen, toggle }: { e: CandidateEval; leaguePct?: number | null; target: TargetEntry | null; dna: DnaResult | null; perf: RowPerf | null; onTrack: () => void; isOpen: boolean; toggle: () => void }) {
+/** Puntuación en la posición y el rol elegidos arriba, y la de tu mejor jugador ahí. */
+interface RowView {
+  slot: PositionSlot;
+  role: RoleDef;
+  score: number;
+  min: number;
+  max: number;
+  own: number | null;
+}
+
+function Row({ e, leaguePct, target, dna, perf, view, onTrack, isOpen, toggle }: { e: CandidateEval; leaguePct?: number | null; target: TargetEntry | null; dna: DnaResult | null; perf: RowPerf | null; view: RowView | null; onTrack: () => void; isOpen: boolean; toggle: () => void }) {
   const p = e.player;
   const tier = e.personalityTier as PersonalityTierLevel;
   const det = p.attrs.Det?.value ?? null;
@@ -315,12 +390,25 @@ function Row({ e, leaguePct, target, dna, perf, onTrack, isOpen, toggle }: { e: 
         <td className="font-medium whitespace-nowrap">{p.name}{e.red.length > 0 && <span className="text-attr-low" title={e.red.join("\n")}> ✕</span>}{e.warnings.length > 0 && e.red.length === 0 && <span className="text-attr-mid" title={e.warnings.join("\n")}> ⚠</span>}{dna && !dna.ok && <span className="text-[10px] text-attr-mid" title={`Fuera del ADN: ${dna.misses.join(", ")}`}> ADN✗</span>}</td>
         <td className="num">{p.age ?? "–"}</td>
         <td className="text-xs whitespace-nowrap">{p.club ?? "—"}</td>
-        <td className="text-xs whitespace-nowrap">{e.fit ? `${POSITION_LABEL[e.fit.need.slot]} · ${e.fit.need.role.es}` : "—"}</td>
-        <td className="num whitespace-nowrap">
-          {e.fit ? <ScoreBadge score={e.fit.effective} /> : "–"}
-          {e.fit && e.fit.max - e.fit.min > 2 && <span className="text-[10px] text-muted"> {Math.round(e.fit.min)}–{Math.round(e.fit.max)}</span>}
-        </td>
-        <td className="num text-xs whitespace-nowrap">{e.fit ? <span className={e.fit.rank === 1 ? "text-attr-good" : ""}>{e.fit.rank}º{e.fit.need.starter ? ` · ${e.fit.effective >= e.fit.need.starter.effective ? "+" : "−"}${Math.abs(Math.round(e.fit.effective - e.fit.need.starter.effective))}` : ""}</span> : "–"}</td>
+        {view ? (
+          <>
+            <td className="text-xs whitespace-nowrap">{POSITION_LABEL[view.slot]} · {view.role.es} <span className="text-muted">({DUTY_LABEL[view.role.duty]})</span></td>
+            <td className="num whitespace-nowrap">
+              <ScoreBadge score={view.score} />
+              {view.max - view.min > 2 && <span className="text-[10px] text-muted"> {Math.round(view.min)}–{Math.round(view.max)}</span>}
+            </td>
+            <td className="num text-xs whitespace-nowrap">{view.own != null ? <span className={view.score >= view.own ? "text-attr-good" : ""}>{view.score >= view.own ? "+" : "−"}{Math.abs(Math.round(view.score - view.own))}</span> : "–"}</td>
+          </>
+        ) : (
+          <>
+            <td className="text-xs whitespace-nowrap">{e.fit ? `${POSITION_LABEL[e.fit.need.slot]} · ${e.fit.need.role.es}` : "—"}</td>
+            <td className="num whitespace-nowrap">
+              {e.fit ? <ScoreBadge score={e.fit.effective} /> : "–"}
+              {e.fit && e.fit.max - e.fit.min > 2 && <span className="text-[10px] text-muted"> {Math.round(e.fit.min)}–{Math.round(e.fit.max)}</span>}
+            </td>
+            <td className="num text-xs whitespace-nowrap">{e.fit ? <span className={e.fit.rank === 1 ? "text-attr-good" : ""}>{e.fit.rank}º{e.fit.need.starter ? ` · ${e.fit.effective >= e.fit.need.starter.effective ? "+" : "−"}${Math.abs(Math.round(e.fit.effective - e.fit.need.starter.effective))}` : ""}</span> : "–"}</td>
+          </>
+        )}
         <td className={`text-xs whitespace-nowrap ${tier >= 5 ? "text-attr-good" : tier <= 1 ? "text-attr-low" : ""}`} title={TIER_LABEL[tier]}>{p.personality ?? "—"}</td>
         <td className={`num ${det != null && det < 10 ? "text-attr-low" : det != null && det >= 15 ? "text-attr-good" : ""}`}>{det ?? "–"}</td>
         <td className="num text-xs whitespace-nowrap" title={p.wageRaw ?? ""}>{p.wage != null ? fmtMoney(p.wage) : "–"}</td>
