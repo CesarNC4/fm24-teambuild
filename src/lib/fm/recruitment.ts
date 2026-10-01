@@ -10,7 +10,8 @@ import { ATTR_BY_KEY, type AttrKey } from "./attributes";
 import { roleFunctions } from "./balance";
 import { STYLE_BY_ID, profileOf, styleChildren, styleTraits, type StylePreset } from "./instructions";
 import { personalityTierLevel, TIER_LABEL, type PersonalityTierLevel } from "./personalities";
-import { POSITION_LABEL, type RoleDef } from "./roles";
+import { FORMATION_BY_ID } from "./formations";
+import { POSITION_LABEL, ROLE_BY_ID, type RoleDef } from "./roles";
 import type { CandidateEval, SquadNeed } from "./scouting";
 import { fmtMoney } from "./scouting";
 import { profileText } from "./slotPlan";
@@ -337,40 +338,197 @@ export function buildFocuses(needs: SquadNeed[], ctx: FocusContext): Recruitment
       out.push({ key, title: c.name, need: null, horizon: "inmediato", priority: "Estándar", fields: [{ label: "Nombre", value: c.name }], details: [], scout: who && !who.gone ? who : null, analyst: null, scoutWhy: "", created: c, alerts, note: "" });
     }
   }
-  // Encargos permanentes (Indefinido)
-  const permanent: { key: string; title: string; horizon: FocusHorizon; ages: string; q: { cur: number; pot: number }; note: string }[] = [
-    { key: "perm:cantera", title: "Cantera (15-17)", horizon: "futuro", ages: "15-17", q: { cur: 1, pot: 4 }, note: "Fichajes baratos para el Sub-18 antes de su primer contrato profesional." },
-    { key: "perm:contratos", title: "Contratos que vencen", horizon: "inmediato", ages: clampAge(22, 30), q: { cur: 3, pot: 3 }, note: "Jugadores del nivel del primer equipo a los que les queda un año o menos: marca «Estado del contrato» en el juego." },
-  ];
-  for (const p of permanent) {
-    const created = ctx.created[p.key] ?? null;
+  // Encargos permanentes (Indefinido): los dos de siempre y, después, uno para cada ojeador que se quede sin nada
+  const needLines = new Set(open.map((n) => lineOf(n.slot)));
+  const emitPerm = (spec: PermSpec, pool: StaffMember[]) => {
+    const created = ctx.created[spec.key] ?? null;
     const alerts: string[] = [];
     const createdScout = created?.scout ? ctx.staff.find((m) => m.name === created.scout) ?? null : null;
     let scout: StaffMember | null = createdScout && !createdScout.gone ? createdScout : null;
+    let analyst: StaffMember | null = created?.analyst ? ctx.staff.find((m) => m.name === created.analyst && !m.gone) ?? null : null;
     let why = scout ? "el que asignaste al crearlo" : "";
     if (!scout) {
       if (created?.scout) alerts.push(`${created.scout} ya no está en el club: reasigna el foco en el juego.`);
-      const s = pick(scouts, p.horizon, load);
+      const s = spec.scout ? { who: spec.scout, why: spec.scoutWhy ?? "" } : pick(pool, spec.horizon, load);
       scout = s.who; why = s.why;
       bump(scout?.name);
+      // Analista solo si alguno está libre: los permanentes no deben cargarle
+      const a = pick(analysts.filter((m) => !load.get(m.name)), spec.horizon, load);
+      analyst = a.who;
+      bump(analyst?.name);
     }
     out.push({
-      key: p.key, title: p.title, need: null, horizon: p.horizon, priority: "Indefinido", created, alerts, scout, analyst: null, scoutWhy: why, note: p.note,
+      key: spec.key, title: spec.title, need: null, horizon: spec.horizon, priority: "Indefinido", created, alerts, scout, analyst, scoutWhy: why, note: spec.note,
       fields: [
-        { label: "Posición", value: "Cualquier posición de la táctica" },
-        { label: "Nombre", value: p.key === "perm:cantera" ? "CANTERA 15-17" : "CONTRATOS 12M" },
-        { label: "Tipo de fichaje", value: "Traspaso" },
-        { label: "Calidad actual y potencial mínimas", value: `${stars(p.q.cur)} · ${stars(p.q.pot)}` },
-        { label: "Intervalo de edad", value: p.ages },
-        { label: "Áreas", value: areas(scout) },
+        { label: "Posición", value: spec.position },
+        ...(spec.role ? [{ label: "Rol y mínima competencia", value: spec.role, hint: "competencia mínima: la eliges tú" }] : []),
+        { label: "Nombre", value: spec.name.slice(0, 25) },
+        { label: "Tipo de fichaje", value: spec.transfer ?? "Traspaso" },
+        { label: "Calidad actual y potencial mínimas", value: `${stars(spec.q.cur)} · ${stars(spec.q.pot)}` },
+        { label: "Intervalo de edad", value: spec.ages },
+        { label: "Áreas", value: spec.area ?? areas(scout) },
         { label: "Prioridad", value: "Indefinido" },
-        { label: "Ojeador y analista asignado", value: scout?.name ?? "importa tus empleados", hint: why || undefined },
+        { label: "Ojeador y analista asignado", value: `${scout?.name ?? "importa tus empleados"}${analyst ? ` · ${analyst.name}` : ""}`, hint: why || undefined },
         { label: "Incluir resultados de otras políticas", value: "Marcada" },
       ],
-      details: wageCap != null ? [{ label: "Sueldo", value: `≤ ${fmtMoney(wageCap)}` }] : [],
+      details: [...(spec.details ?? []), ...(wageCap != null ? [{ label: "Sueldo", value: `≤ ${fmtMoney(wageCap)}` }] : [])],
     });
+  };
+  const specs = permSpecs(ctx, clampAge, needLines);
+  emitPerm(specs.cantera, scouts);
+  emitPerm(specs.contratos, scouts);
+  // Ya creados en el juego en otra sesión (promesas, cobertura, mercados): siguen con su ojeador
+  const done = new Set(out.map((f) => f.key));
+  for (const key of Object.keys(ctx.created)) {
+    const spec = !done.has(key) ? specFromKey(key, specs, ctx, clampAge) : null;
+    if (spec) { emitPerm(spec, scouts); done.add(key); }
+  }
+  // Nadie sin nada: mientras quede un ojeador libre, otro encargo permanente
+  const idle = () => scouts.filter((m) => !m.gone && !load.get(m.name));
+  for (const spec of [specs.promesas, ...specs.lines]) {
+    if (!idle().length) break;
+    if (!done.has(spec.key)) { emitPerm(spec, idle()); done.add(spec.key); }
+  }
+  // El resto, cada uno a un mercado: el suyo si nadie lo cubre; si ya está cubierto y puede viajar, uno que no cubra nadie
+  const covered = new Map<string, number>();
+  for (const k of done) { const m = /^perm:mercado:([A-Z]+):/.exec(k); if (m) covered.set(m[1], (covered.get(m[1]) ?? 0) + 1); }
+  const byQuality = (a: StaffMember, b: StaffMember) => (b.judgeAbility ?? 0) + (b.judgePotential ?? 0) - (a.judgeAbility ?? 0) - (a.judgePotential ?? 0);
+  const homeOf = (m: StaffMember) => m.nationality?.toUpperCase() ?? null;
+  // Primero cada país para el mejor de sus ojeadores libres; luego los demás, fuera si pueden viajar
+  const firstPass = idle().sort(byQuality).filter((m, i, arr) => homeOf(m) && !covered.has(homeOf(m)!) && arr.findIndex((x) => homeOf(x) === homeOf(m)) === i);
+  for (const scout of [...firstPass, ...idle().filter((m) => !firstPass.includes(m)).sort(byQuality)]) {
+    const home = homeOf(scout);
+    const ada = scout.adaptability ?? 0;
+    const far = ada >= 15 ? KEY_MARKETS.find((c) => !covered.has(c)) ?? null : null;
+    const code = home && !covered.has(home) ? home : far ?? home;
+    if (!code) continue;
+    let i = covered.get(code) ?? 0;
+    const keyAt = (j: number) => marketKey(code, marketKind(j, scout), Math.floor(j / MARKET_KINDS.length) + 1);
+    while (done.has(keyAt(i))) i++;
+    const spec = marketSpec(code, marketKind(i, scout), Math.floor(i / MARKET_KINDS.length) + 1, scout, clampAge);
+    covered.set(code, i + 1);
+    emitPerm(spec, [scout]);
+    done.add(spec.key);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Encargos permanentes
+// ---------------------------------------------------------------------------
+
+/** Encargo Indefinido listo para pintar como foco. */
+interface PermSpec {
+  key: string;
+  title: string;
+  name: string;
+  horizon: FocusHorizon;
+  position: string;
+  role?: string;
+  transfer?: string;
+  q: { cur: number; pot: number };
+  ages: string;
+  area?: string;
+  details?: FocusField[];
+  note: string;
+  /** Ojeador fijo (los de mercado van al ojeador que lo conoce). */
+  scout?: StaffMember;
+  scoutWhy?: string;
+}
+
+/** Líneas de la táctica para los focos de cobertura. */
+const LINES: { id: string; label: string; abbr: string; slots: PositionSlot[] }[] = [
+  { id: "por", label: "Porteros", abbr: "POR", slots: ["GK"] },
+  { id: "dfc", label: "Centrales", abbr: "DFC", slots: ["DC"] },
+  { id: "lat", label: "Laterales", abbr: "LAT", slots: ["DL", "DR", "WBL", "WBR"] },
+  { id: "mc", label: "Mediocentros", abbr: "MC", slots: ["DM", "MC"] },
+  { id: "ban", label: "Bandas", abbr: "BANDAS", slots: ["ML", "MR", "AML", "AMR"] },
+  { id: "mp", label: "Mediapuntas", abbr: "MP", slots: ["AMC"] },
+  { id: "dl", label: "Delanteros", abbr: "DL", slots: ["ST"] },
+];
+
+const lineOf = (slot: PositionSlot) => LINES.find((l) => l.slots.includes(slot))?.id ?? "";
+
+/** Mercados con más talento por descubrir, para los ojeadores que pueden viajar (Adaptabilidad ≥ 15). */
+const KEY_MARKETS = ["BRA", "ARG", "FRA", "POR", "NED", "ESP", "BEL", "URU", "COL", "CRO", "SRB", "DEN", "NOR", "SWE", "AUT", "SUI", "NGA", "GHA", "SEN", "CIV", "MAR", "ITA", "GER", "ENG", "SCO", "USA", "JPN", "KOR", "TUR", "POL", "CZE", "UKR"];
+
+/** Tipos de encargo de mercado: si dos ojeadores cubren el mismo país, uno busca talento, otro jugadores hechos y otro gangas. */
+const MARKET_KINDS = [
+  { id: "talento", label: "talento", horizon: "futuro" as FocusHorizon, q: { cur: 2, pot: 4 }, ages: [17, 21] as const, note: "Jóvenes con potencial de primer equipo antes de que suba su precio." },
+  { id: "listos", label: "listos", horizon: "inmediato" as FocusHorizon, q: { cur: 3, pot: 3.5 }, ages: [21, 27] as const, note: "Jugadores hechos del nivel de tu plantilla, para tener alternativas cuando se abra un hueco." },
+  { id: "gangas", label: "gangas", horizon: "inmediato" as FocusHorizon, q: { cur: 3, pot: 3 }, ages: [23, 30] as const, note: "Buen nivel a buen precio: transferibles, con cláusula baja o en ligas pequeñas." },
+];
+
+/** Tipo del encargo número `i` de un país: el primero, lo que mejor juzga su ojeador. */
+function marketKind(i: number, scout: StaffMember | undefined): number {
+  const first = scout && (scout.judgePotential ?? 0) > (scout.judgeAbility ?? 0) ? 0 : 1;
+  return i === 0 ? first : i === 1 ? 1 - first : i % MARKET_KINDS.length;
+}
+
+const marketKey = (code: string, kind: number, rep: number) => `perm:mercado:${code}:${MARKET_KINDS[kind].id}${rep > 1 ? `:${rep}` : ""}`;
+
+type ClampAge = (lo: number, hi: number) => string;
+
+function marketSpec(code: string, k: number, rep: number, scout: StaffMember | undefined, clampAge: ClampAge): PermSpec {
+  const kind = MARKET_KINDS[k];
+  const nation = nationName(code) ?? code;
+  const home = scout?.nationality?.toUpperCase() === code;
+  const ada = scout?.adaptability ?? 0;
+  const n = rep > 1 ? ` ${rep}` : "";
+  return {
+    key: marketKey(code, k, rep),
+    title: `Mercado: ${nation} (${kind.label})${n}`,
+    name: `${nation.toUpperCase()} ${kind.label.toUpperCase()}${n}`,
+    horizon: kind.horizon,
+    position: "Cualquier posición de la táctica",
+    q: kind.q,
+    ages: clampAge(kind.ages[0], kind.ages[1]),
+    area: home ? `${nation} (su país: lo conoce desde el primer día)` : `${nation} (nadie de tu red lo cubre; Adaptabilidad ${ada}: se le puede mandar)`,
+    note: `${kind.note}${scout ? ` Para ${scout.name}, que se quedaba sin foco.` : ""}`,
+    scout,
+    scoutWhy: scout ? `${home ? "es su país" : "puede viajar"}, Juz. ${kind.horizon === "futuro" ? `Pot ${scout.judgePotential ?? "?"}` : `Cal ${scout.judgeAbility ?? "?"}`}, sin otro foco` : undefined,
+  };
+}
+
+function permSpecs(ctx: FocusContext, clampAge: ClampAge, needLines: Set<string>) {
+  const fslots = FORMATION_BY_ID[ctx.tactic.formationId]?.slots ?? [];
+  const lines: PermSpec[] = [];
+  for (const l of LINES) {
+    const here = fslots.filter((fs) => l.slots.includes(fs.slot));
+    if (!here.length || needLines.has(l.id)) continue;
+    const roles = [...new Set(here.map((fs) => ROLE_BY_ID[ctx.tactic.roles[fs.id] ?? fs.defaultRole]?.es).filter(Boolean))];
+    lines.push({
+      key: `perm:linea:${l.id}`,
+      title: `Cobertura: ${l.label.toLowerCase()}`,
+      name: `COBERTURA ${l.abbr}`,
+      horizon: "inmediato",
+      position: [...new Set(here.map((fs) => focusPosition(fs.slot)))].join(", "),
+      role: roles.join(" / "),
+      q: { cur: 3, pot: 3.5 },
+      ages: clampAge(21, 28),
+      note: `Ninguna urgencia en ${l.label.toLowerCase()}, pero conviene tener alternativas ojeadas antes de que surja una lesión o una venta.`,
+    });
+  }
+  return {
+    cantera: { key: "perm:cantera", title: "Cantera (15-17)", name: "CANTERA 15-17", horizon: "futuro", position: "Cualquier posición de la táctica", q: { cur: 1, pot: 4 }, ages: "15-17", note: "Fichajes baratos para el Sub-18 antes de su primer contrato profesional." } as PermSpec,
+    contratos: { key: "perm:contratos", title: "Contratos que vencen", name: "CONTRATOS 12M", horizon: "inmediato", position: "Cualquier posición de la táctica", q: { cur: 3, pot: 3 }, ages: clampAge(22, 30), note: "Jugadores del nivel del primer equipo a los que les queda un año o menos: marca «Estado del contrato» en el juego." } as PermSpec,
+    promesas: { key: "perm:promesas", title: "Promesas (17-20)", name: "PROMESAS 17-20", horizon: "futuro", position: "Cualquier posición de la táctica", q: { cur: 2, pot: 4.5 }, ages: "17-20", note: "Las joyas de cualquier liga: potencial de estrella para el primer equipo en dos o tres temporadas." } as PermSpec,
+    lines,
+  };
+}
+
+/** Encargo permanente ya creado en el juego, a partir de su clave. */
+function specFromKey(key: string, specs: ReturnType<typeof permSpecs>, ctx: FocusContext, clampAge: ClampAge): PermSpec | null {
+  if (key === specs.promesas.key) return specs.promesas;
+  const line = specs.lines.find((l) => l.key === key);
+  if (line) return line;
+  const m = /^perm:mercado:([A-Z]+):(\w+)(?::(\d+))?$/.exec(key);
+  if (!m) return null;
+  const k = MARKET_KINDS.findIndex((x) => x.id === m[2]);
+  if (k < 0) return null;
+  // Sin ojeador fijo: emitPerm le deja el que asignaste al crearlo
+  const scout = ctx.staff.find((x) => x.name === ctx.created[key]?.scout && !x.gone);
+  return marketSpec(m[1], k, Number(m[3] ?? 1), scout, clampAge);
 }
 
 /** Carga de cada ojeador y analista: focos creados y propuestos. */

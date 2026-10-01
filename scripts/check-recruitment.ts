@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { STYLE_BY_ID } from "../src/lib/fm/instructions";
 import { parseFmHtml } from "../src/lib/fm/parser";
 import { DEFAULT_DNA, buildFocuses, dnaCheck, evolutionNeeds, focusName, proposedTargets, styleDnaRules } from "../src/lib/fm/recruitment";
-import { ROLE_BY_ID } from "../src/lib/fm/roles";
+import { POSITION_LABEL, ROLE_BY_ID } from "../src/lib/fm/roles";
 import { NEED_LABEL, evaluateAll, squadNeeds } from "../src/lib/fm/scouting";
 import { isStaffExport, mergeStaff, parseStaffHtml } from "../src/lib/fm/staff";
 import { newTactic, withLocks } from "../src/lib/fm/tactics";
@@ -52,6 +52,29 @@ expect("un foco creado con un ojeador que se fue pide reasignar", focuses.some((
 expect("nombre en tu formato y con 25 caracteres como mucho: «DL (C)-DLA», «MP (D)-EXT»", focusName("ST", ROLE_BY_ID["AF-A"]) === "DL (C)-DLA" && focusName("AMR", ROLE_BY_ID["W-S"]) === "MP (D)-EXT" && focuses.every((f) => (f.fields.find((x) => x.label === "Nombre")?.value.length ?? 0) <= 25));
 const keptScout = buildFocuses(res.needs, { tactic, staff: merged, dna: DEFAULT_DNA, budget: { transfer: null, wage: null }, firstTeam: players, created: needFocus[0] ? { [needFocus[0].key]: { name: "x", scout: "John Thorburn", analyst: null, createdAt: "" } } : {} });
 expect("un foco ya creado conserva su ojeador", !needFocus[0] || keptScout.find((f) => f.key === needFocus[0].key)?.scout?.name === "John Thorburn");
+
+console.log("\n== Nadie sin foco");
+const scoutLoad = (fs: typeof focuses) => { const m = new Map<string, number>(); for (const f of fs) if (f.scout) m.set(f.scout.name, (m.get(f.scout.name) ?? 0) + 1); return m; };
+const active = (st: typeof staff) => st.filter((m) => m.kind === "ojeador" && !m.gone);
+const base = scoutLoad(focuses);
+expect("con tu red de 7, todos los ojeadores llevan al menos un foco", active(merged).every((m) => base.get(m.name)), active(merged).filter((m) => !base.get(m.name)).map((m) => m.name).join(", "));
+const NATS = ["GER", "GER", "GER", "GER", "ENG", "ENG", "ENG", "SCO", "BRA", "BRA", "ITA", "ITA", "ESP", "ESP", "SUI", "POR", "WAL", "NIR", "SCO", "ENG", "GER", "GER"];
+const big = NATS.map((nat, i) => ({ ...staff.find((m) => m.kind === "ojeador")!, name: `Ojeador ${i + 1}`, nationality: nat, adaptability: [8, 19, 13, 16, 20, 10][i % 6], judgeAbility: 14 + (i % 7), judgePotential: 20 - (i % 6) }));
+const bigNet = [...big, ...staff.filter((m) => m.kind === "analista")];
+const fewNeeds = res.needs.map((n, i) => ({ ...n, level: i < 2 ? ("urgente" as const) : ("cubierto" as const) }));
+const bigF = buildFocuses(fewNeeds, { tactic, staff: bigNet, dna: DEFAULT_DNA, budget: { transfer: null, wage: null }, firstTeam: players, created: {} });
+const bigLoad = scoutLoad(bigF);
+for (const f of bigF.filter((x) => x.priority === "Indefinido")) console.log(`  ${f.title.padEnd(36)} ${f.scout?.name ?? "—"} (${f.scout?.nationality}, Ada ${f.scout?.adaptability})${f.analyst ? ` + ${f.analyst.name}` : ""}`);
+expect("con 22 ojeadores y 2 urgencias, los 22 llevan foco", big.every((m) => bigLoad.get(m.name)), big.filter((m) => !bigLoad.get(m.name)).map((m) => m.name).join(", "));
+expect("y ninguno lleva dos: los permanentes solo van a los libres", Math.max(...bigLoad.values()) === 1, JSON.stringify([...bigLoad].filter(([, v]) => v > 1)));
+expect("claves y nombres sin repetir", new Set(bigF.map((f) => f.key)).size === bigF.length && new Set(bigF.map((f) => f.fields.find((x) => x.label === "Nombre")?.value)).size === bigF.length);
+expect("las líneas con urgencia no llevan además foco de cobertura", !bigF.some((f) => f.key.startsWith("perm:linea:") && fewNeeds.filter((n) => n.level !== "cubierto").some((n) => f.fields[0].value.split(", ").includes(n.slot === "ST" ? "DL (C)" : POSITION_LABEL[n.slot]))));
+expect("un ojeador con Adaptabilidad ≥ 15 cuyo país ya está cubierto va a un mercado que nadie cubre", bigF.some((f) => f.key.startsWith("perm:mercado:") && f.scout && f.scout.nationality !== f.key.split(":")[2] && (f.scout.adaptability ?? 0) >= 15));
+expect("uno con Adaptabilidad baja se queda en su país", bigF.filter((f) => f.key.startsWith("perm:mercado:") && (f.scout?.adaptability ?? 0) < 15).every((f) => f.scout!.nationality === f.key.split(":")[2]));
+expect("los focos Máxima no se tocan: siguen siendo 2", bigF.filter((f) => f.priority === "Máxima").length === 2);
+const mk = bigF.find((f) => f.key.startsWith("perm:mercado:"))!;
+const again = buildFocuses(fewNeeds, { tactic, staff: bigNet, dna: DEFAULT_DNA, budget: { transfer: null, wage: null }, firstTeam: players, created: { [mk.key]: { name: "x", scout: mk.scout!.name, analyst: null, createdAt: "" } } });
+expect("un foco de mercado ya creado sigue con su ojeador y no se duplica", again.filter((f) => f.key === mk.key).length === 1 && again.find((f) => f.key === mk.key)?.scout?.name === mk.scout!.name && scoutLoad(again).get(mk.scout!.name) === 1);
 
 console.log("\n== ADN del club");
 const rules = styleDnaRules(tactic);

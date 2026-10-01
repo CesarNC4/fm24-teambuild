@@ -115,7 +115,7 @@ export function StaffNetwork({ staff, load }: { staff: StaffMember[]; load: Map<
           </tbody>
         </table>
       )}
-      <p className="text-muted">Reparto: para jugadores listos ya, el de mayor Juz. Cal; para futuro, el de mayor Juz. Pot; cada foco que lleva resta para que nadie acumule demasiados. Adaptabilidad ≥ 15 para mercados lejanos. El director deportivo, el secretario técnico y el mánager de cesiones no se asignan.</p>
+      <p className="text-muted">Reparto: para jugadores listos ya, el de mayor Juz. Cal; para futuro, el de mayor Juz. Pot; cada foco que lleva resta para que nadie acumule demasiados. Nadie se queda sin nada: los que no llevan un foco Máxima o Estándar reciben uno Indefinido (cantera, contratos, promesas, cobertura de las líneas sin urgencia y, el resto, un mercado: su país si nadie lo cubre o, con Adaptabilidad ≥ 15, uno que no cubra nadie). Cuando un Máxima o un Estándar termine, ese ojeador recibe el suyo. El director deportivo, el secretario técnico y el mánager de cesiones no se asignan.</p>
     </div>
   );
 }
