@@ -139,7 +139,10 @@ export type FocusHorizon = "inmediato" | "rotacion" | "futuro";
 /** Foco que ya creaste en el juego (se guarda para contar la carga y detectar ojeadores que se van). */
 export interface CreatedFocus {
   name: string;
+  /** Primer ojeador (los focos guardados antes de exigir varios solo traen este). */
   scout: string | null;
+  /** Todos los ojeadores del foco. */
+  scouts?: string[];
   analyst: string | null;
   createdAt: string;
 }
@@ -160,6 +163,9 @@ export interface RecruitmentFocus {
   fields: FocusField[];
   /** Detalles adicionales (Estilo de jugador, Cualidad de jugador, Pierna buena, Altura, Sueldo). */
   details: FocusField[];
+  /** Ojeadores del foco: el juego pide 4 en Máxima y 2 en Estándar. */
+  scouts: StaffMember[];
+  /** El primero de `scouts`. */
   scout: StaffMember | null;
   analyst: StaffMember | null;
   scoutWhy: string;
@@ -232,6 +238,15 @@ function horizonOf(n: SquadNeed): FocusHorizon {
   return "inmediato";
 }
 
+/** Ojeadores que el juego exige por prioridad. */
+export const SCOUTS_REQUIRED: Record<FocusPriority, number> = { Máxima: 4, Estándar: 2, Indefinido: 1 };
+
+/** Ojeadores guardados de un foco creado (los antiguos solo traen el primero). */
+export function createdScouts(c: CreatedFocus | null | undefined): string[] {
+  if (!c) return [];
+  return c.scouts?.length ? c.scouts : c.scout ? [c.scout] : [];
+}
+
 /** Ojeador o analista para el foco: por el atributo que importa y la carga que ya lleva. */
 function pick(people: StaffMember[], horizon: FocusHorizon, load: Map<string, number>): { who: StaffMember | null; why: string } {
   const key = (m: StaffMember) => (horizon === "futuro" ? m.judgePotential ?? 0 : m.judgeAbility ?? 0);
@@ -241,6 +256,27 @@ function pick(people: StaffMember[], horizon: FocusHorizon, load: Map<string, nu
   const attr = horizon === "futuro" ? `Juz. Pot ${who.judgePotential ?? "?"}` : `Juz. Cal ${who.judgeAbility ?? "?"}`;
   const l = load.get(who.name) ?? 0;
   return { who, why: `${attr}${l ? `, ya lleva ${l} foco${l === 1 ? "" : "s"}` : ", sin focos"}` };
+}
+
+/** `n` ojeadores distintos, uno detrás de otro, sumando carga a cada uno. */
+function pickMany(people: StaffMember[], horizon: FocusHorizon, load: Map<string, number>, n: number): { who: StaffMember[]; why: string } {
+  const who: StaffMember[] = [];
+  const why: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const s = pick(people.filter((m) => !who.includes(m)), horizon, load);
+    if (!s.who) break;
+    who.push(s.who); why.push(`${s.who.name}: ${s.why}`);
+    load.set(s.who.name, (load.get(s.who.name) ?? 0) + 1);
+  }
+  return { who, why: why.join(" · ") };
+}
+
+/** Áreas para un foco con varios ojeadores: sus países y, si alguno puede viajar, cualquier mercado. */
+function areasFor(scouts: StaffMember[]): string {
+  if (scouts.length <= 1) return areas(scouts[0] ?? null);
+  const homes = [...new Set(scouts.map((m) => nationName(m.nationality)).filter(Boolean))];
+  const far = scouts.filter((m) => (m.adaptability ?? 0) >= 15);
+  return `${homes.join(", ")} (los países de tus ${scouts.length} ojeadores)${far.length ? `; ${far.map((m) => m.name).join(" y ")} ${far.length === 1 ? "puede" : "pueden"} ir a cualquier mercado (Adaptabilidad ≥ 15)` : ""}`;
 }
 
 function areas(scout: StaffMember | null): string {
@@ -262,7 +298,8 @@ export function buildFocuses(needs: SquadNeed[], ctx: FocusContext): Recruitment
   const analysts = ctx.staff.filter((m) => m.kind === "analista");
   const load = new Map<string, number>();
   const bump = (name: string | null | undefined) => { if (name) load.set(name, (load.get(name) ?? 0) + 1); };
-  for (const c of Object.values(ctx.created)) { bump(c.scout); bump(c.analyst); }
+  for (const c of Object.values(ctx.created)) { for (const name of createdScouts(c)) bump(name); bump(c.analyst); }
+  const activeScouts = scouts.filter((m) => !m.gone).length;
   const wages = ctx.firstTeam.map((p) => p.wage).filter((w): w is number => w != null).sort((a, b) => a - b);
   const maxWage = wages.length ? wages[wages.length - 1] : null;
   const dnaWage = ctx.dna.maxWagePct != null && maxWage != null ? (maxWage * ctx.dna.maxWagePct) / 100 : null;
@@ -278,21 +315,20 @@ export function buildFocuses(needs: SquadNeed[], ctx: FocusContext): Recruitment
     const priority: FocusPriority = n.level === "urgente" ? "Máxima" : "Estándar";
     const created = ctx.created[key] ?? null;
     const alerts: string[] = [];
-    let scout: StaffMember | null;
-    let analyst: StaffMember | null;
-    let scoutWhy: string;
-    const createdScout = created?.scout ? ctx.staff.find((m) => m.name === created.scout) ?? null : null;
-    if (created && createdScout && !createdScout.gone) {
-      scout = createdScout;
-      analyst = ctx.staff.find((m) => m.name === created.analyst) ?? null;
-      scoutWhy = "el que asignaste al crearlo";
-    } else {
-      if (created?.scout) alerts.push(`${created.scout} ya no está en el club: reasigna el foco en el juego.`);
-      const s = pick(scouts, horizon, load);
-      const a = pick(analysts, horizon, load);
-      scout = s.who; analyst = a.who; scoutWhy = s.why;
-      bump(scout?.name); bump(analyst?.name);
-    }
+    const required = SCOUTS_REQUIRED[priority];
+    // Los que asignaste al crearlo siguen; los que se fueron o faltan hasta lo que pide el juego se proponen por carga
+    const savedNames = createdScouts(created);
+    const kept = savedNames.map((name) => ctx.staff.find((m) => m.name === name && !m.gone)).filter((m): m is StaffMember => !!m);
+    const goneNames = savedNames.filter((name) => !kept.some((m) => m.name === name));
+    const extra = kept.length < required ? pickMany(scouts.filter((m) => !kept.includes(m)), horizon, load, required - kept.length) : { who: [], why: "" };
+    const focusScouts = [...kept, ...extra.who];
+    for (const name of goneNames) alerts.push(`${name} ya no está en el club: reasigna el foco en el juego${extra.who.length ? ` (propuesto: ${extra.who.map((m) => m.name).join(", ")})` : ""}.`);
+    if (created && !goneNames.length && extra.who.length) alerts.push(`El juego pide ${required} ojeadores en un foco ${priority}: añade ${extra.who.map((m) => m.name).join(", ")}.`);
+    if (activeScouts > 0 && focusScouts.length < required) alerts.push(`El juego pide ${required} ojeadores en un foco ${priority} y solo tienes ${focusScouts.length}: contrata más o baja la prioridad.`);
+    let analyst: StaffMember | null = created?.analyst ? ctx.staff.find((m) => m.name === created.analyst && !m.gone) ?? null : null;
+    if (!created) { analyst = pick(analysts, horizon, load).who; bump(analyst?.name); }
+    const scout = focusScouts[0] ?? null;
+    const scoutWhy = [kept.length ? `${kept.map((m) => m.name).join(", ")}: ${kept.length === 1 ? "el que asignaste" : "los que asignaste"} al crearlo` : "", extra.why].filter(Boolean).join(" · ");
     const role = n.role;
     const q = horizon === "futuro" ? { cur: 2, pot: 4 } : horizon === "rotacion" ? { cur: 3, pot: 3 } : { cur: 3.5, pot: 3.5 };
     const transferType = horizon === "rotacion" ? "Fichaje y cesión" : "Traspaso";
@@ -304,9 +340,9 @@ export function buildFocuses(needs: SquadNeed[], ctx: FocusContext): Recruitment
       { label: "Tipo de fichaje", value: transferType, hint: horizon === "rotacion" ? "o Cesión si solo hay que cubrir esta temporada" : undefined },
       { label: "Calidad actual y potencial mínimas", value: `${stars(q.cur)} · ${stars(q.pot)}`, hint: "relativas a tu plantilla: las estrellas las da tu cuerpo técnico" },
       { label: "Intervalo de edad", value: horizon === "futuro" ? clampAge(17, 21) : horizon === "rotacion" ? clampAge(20, 27) : clampAge(22, 29) },
-      { label: "Áreas", value: areas(scout) },
+      { label: "Áreas", value: areasFor(focusScouts) },
       { label: "Prioridad", value: priority },
-      { label: "Ojeador y analista asignado", value: `${scout?.name ?? "importa tus empleados"}${analyst ? ` · ${analyst.name}` : ""}`, hint: scoutWhy || undefined },
+      { label: "Ojeador y analista asignado", value: `${focusScouts.map((m) => m.name).join(", ") || "importa tus empleados"}${analyst ? ` · analista: ${analyst.name}` : ""}`, hint: `el juego pide ${required} ojeadores en ${priority}${scoutWhy ? `. ${scoutWhy}` : ""}` },
       { label: "Incluir resultados de otras políticas", value: "Marcada" },
     ];
     const details: FocusField[] = [];
@@ -327,15 +363,16 @@ export function buildFocuses(needs: SquadNeed[], ctx: FocusContext): Recruitment
       hint: `${PROFILE_LABEL[statProfile]}: ${fromLeague ? "el verde de tu liga" : "umbrales del Excel, de otra liga (orientativos) hasta que importes estadísticas de tu liga"}`,
     });
     const note = [...n.reasons, ...(n.profile ? [`Umbrales del plan: ${profileText(n.profile)}.`] : [])].join(" ");
-    out.push({ key, title: `${POSITION_LABEL[n.slot]} · ${role.es}`, need: n, horizon, priority, fields, details, scout, analyst, scoutWhy, created, alerts, note });
+    out.push({ key, title: `${POSITION_LABEL[n.slot]} · ${role.es}`, need: n, horizon, priority, fields, details, scouts: focusScouts, scout, analyst, scoutWhy, created, alerts, note });
   }
   // Focos creados cuyo hueco ya no tiene necesidad
   for (const [key, c] of Object.entries(ctx.created)) {
     if (key.startsWith(`${ctx.tactic.id}:`) && !out.some((f) => f.key === key)) {
-      const who = ctx.staff.find((m) => m.name === c.scout) ?? null;
-      const alerts = ["Ese hueco ya no tiene necesidad: borra el foco en el juego y libera al ojeador."];
-      if (c.scout && (!who || who.gone)) alerts.push(`${c.scout} ya no está en el club.`);
-      out.push({ key, title: c.name, need: null, horizon: "inmediato", priority: "Estándar", fields: [{ label: "Nombre", value: c.name }], details: [], scout: who && !who.gone ? who : null, analyst: null, scoutWhy: "", created: c, alerts, note: "" });
+      const names = createdScouts(c);
+      const who = names.map((name) => ctx.staff.find((m) => m.name === name && !m.gone)).filter((m): m is StaffMember => !!m);
+      const alerts = [`Ese hueco ya no tiene necesidad: borra el foco en el juego y libera ${names.length > 1 ? "a sus ojeadores" : "al ojeador"}.`];
+      for (const name of names.filter((x) => !who.some((m) => m.name === x))) alerts.push(`${name} ya no está en el club.`);
+      out.push({ key, title: c.name, need: null, horizon: "inmediato", priority: "Estándar", fields: [{ label: "Nombre", value: c.name }], details: [], scouts: who, scout: who[0] ?? null, analyst: null, scoutWhy: "", created: c, alerts, note: "" });
     }
   }
   // Encargos permanentes (Indefinido): los dos de siempre y, después, uno para cada ojeador que se quede sin nada
@@ -358,7 +395,7 @@ export function buildFocuses(needs: SquadNeed[], ctx: FocusContext): Recruitment
       bump(analyst?.name);
     }
     out.push({
-      key: spec.key, title: spec.title, need: null, horizon: spec.horizon, priority: "Indefinido", created, alerts, scout, analyst, scoutWhy: why, note: spec.note,
+      key: spec.key, title: spec.title, need: null, horizon: spec.horizon, priority: "Indefinido", created, alerts, scouts: scout ? [scout] : [], scout, analyst, scoutWhy: why, note: spec.note,
       fields: [
         { label: "Posición", value: spec.position },
         ...(spec.role ? [{ label: "Rol y mínima competencia", value: spec.role, hint: "competencia mínima: la eliges tú" }] : []),
@@ -535,7 +572,7 @@ function specFromKey(key: string, specs: ReturnType<typeof permSpecs>, ctx: Focu
 export function staffLoad(focuses: RecruitmentFocus[]): Map<string, { created: number; proposed: number }> {
   const m = new Map<string, { created: number; proposed: number }>();
   for (const f of focuses) {
-    for (const who of [f.scout, f.analyst]) {
+    for (const who of [...f.scouts, f.analyst]) {
       if (!who) continue;
       const cur = m.get(who.name) ?? { created: 0, proposed: 0 };
       if (f.created) cur.created++; else cur.proposed++;

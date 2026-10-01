@@ -78,7 +78,7 @@ export function FocusCard({ f, onCreated, onRemove }: { f: RecruitmentFocus; onC
         {f.fields.length > 1 && <button className="px-1.5 rounded border border-border hover:bg-surface-2" onClick={copy}>{copied ? "copiado ✓" : "copiar campos"}</button>}
         {!f.created && (
           <button className="px-1.5 rounded border border-border hover:bg-surface-2" title="Guarda el ojeador asignado: cuenta para su carga y avisa si se va del club"
-            onClick={() => onCreated({ name: f.fields.find((x) => x.label === "Nombre")?.value ?? f.title, scout: f.scout?.name ?? null, analyst: f.analyst?.name ?? null, createdAt: new Date().toISOString() })}>
+            onClick={() => onCreated({ name: f.fields.find((x) => x.label === "Nombre")?.value ?? f.title, scout: f.scout?.name ?? null, scouts: f.scouts.map((m) => m.name), analyst: f.analyst?.name ?? null, createdAt: new Date().toISOString() })}>
             lo he creado en el juego
           </button>
         )}
@@ -115,7 +115,7 @@ export function StaffNetwork({ staff, load }: { staff: StaffMember[]; load: Map<
           </tbody>
         </table>
       )}
-      <p className="text-muted">Reparto: para jugadores listos ya, el de mayor Juz. Cal; para futuro, el de mayor Juz. Pot; cada foco que lleva resta para que nadie acumule demasiados. Nadie se queda sin nada: los que no llevan un foco Máxima o Estándar reciben uno Indefinido (cantera, contratos, promesas, cobertura de las líneas sin urgencia y, el resto, un mercado: su país si nadie lo cubre o, con Adaptabilidad ≥ 15, uno que no cubra nadie). Cuando un Máxima o un Estándar termine, ese ojeador recibe el suyo. El director deportivo, el secretario técnico y el mánager de cesiones no se asignan.</p>
+      <p className="text-muted">Reparto: el juego pide 4 ojeadores en un foco Máxima, 2 en Estándar y 1 en Indefinido. Para jugadores listos ya, los de mayor Juz. Cal; para futuro, los de mayor Juz. Pot; cada foco que lleva resta para que nadie acumule demasiados. Nadie se queda sin nada: los que no llevan un foco Máxima o Estándar reciben uno Indefinido (cantera, contratos, promesas, cobertura de las líneas sin urgencia y, el resto, un mercado: su país si nadie lo cubre o, con Adaptabilidad ≥ 15, uno que no cubra nadie). Cuando un Máxima o un Estándar termine, ese ojeador recibe el suyo. El director deportivo, el secretario técnico y el mánager de cesiones no se asignan.</p>
     </div>
   );
 }
